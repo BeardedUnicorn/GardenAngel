@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { CanvasStage } from "./canvas/CanvasStage";
 import { ToolPalette } from "./canvas/ToolPalette";
 import { PropertyPanel } from "./canvas/PropertyPanel";
@@ -107,6 +108,7 @@ export default function App() {
               Coach
             </button>
           )}
+          {current && <button onClick={onExportPdf}>Export PDF</button>}
           {current && <button onClick={openSettings}>Settings</button>}
           {current && (
             <button disabled={isBusy} onClick={onClose}>
@@ -171,4 +173,34 @@ async function onSave() {
 
 async function onClose() {
   await useProjectStore.getState().closeProject();
+}
+
+async function onExportPdf() {
+  const canvas = useCanvasStore.getState();
+  const project = useProjectStore.getState();
+  // Export the Plan layer only: switch to Plan and drop the selection so
+  // vertex handles don't end up in the snapshot.
+  canvas.setMode("plan");
+  canvas.select(null);
+  // Let React/Konva repaint before snapshotting.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  try {
+    // Dynamic import keeps jsPDF (~400 kB) out of the main bundle.
+    const { buildPlanPdf } = await import("./export/pdfExport");
+    const bytes = buildPlanPdf({
+      gardenName: project.current?.name ?? "Garden plan",
+      viewportScale: useCanvasStore.getState().viewport.scale,
+    });
+    const path = await save({
+      title: "Export plan as PDF",
+      defaultPath: "garden-plan.pdf",
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (!path) return;
+    await invoke("pdf_save", { path, bytes: Array.from(bytes) });
+  } catch (err) {
+    useCanvasStore.setState({
+      lastError: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

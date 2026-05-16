@@ -16,8 +16,9 @@ vector strokes) feeds an OpenAI-compatible AI cleanup pass into editable
 shapes (Plan-mode vertex editing); beds carry plantings sourced from
 Permapeople with offline-cached companion guidance; and an on-demand,
 mystically-voiced coach (Cmd+J) chats with §6.4 context assembly; and a living journal
-records text+photo observations baked into the project zip. PDF export
-and polish are still not present in code.
+records text+photo observations baked into the project zip; and the
+Plan layer exports to a PDF (name, timestamp, scale bar). Final polish
+(Phase 8) is the remaining gap.
 
 ## Tech stack at a glance
 
@@ -140,6 +141,7 @@ requirements).
 | [plants.rs](src-tauri/src/plants.rs) | `plant_cache_get/put` (write-through store), `plantings_list/create/delete` (guards bed exists) |
 | [coach.rs](src-tauri/src/coach.rs) | `coach_conversation_ensure`, `coach_messages_list/add` (role-guarded), `observations_recent/for_bed` |
 | [journal.rs](src-tauri/src/journal.rs) | `observation_create` (copies photo into the zip), `observations_list/delete`, `observation_photo_read` (bytes, traversal-guarded) |
+| [export.rs](src-tauri/src/export.rs) | `pdf_save(path, bytes)` — atomic tmp+rename write |
 
 Pattern: every command takes `State<'_, ProjectState>`, calls
 `state.with_db(|conn| …)` to acquire a `rusqlite::Connection` against the
@@ -177,6 +179,8 @@ the frontend.
 | [coach/coachStore.ts](src/coach/coachStore.ts), [coach/CoachPanel.tsx](src/coach/CoachPanel.tsx) | Conversation/streaming store; Cmd+J chat panel + voice toggle |
 | [coach/__evals__/evalSet.ts](src/coach/__evals__/evalSet.ts) | 10-prompt manual eval set (PLAN §7) |
 | [journal/journalStore.ts](src/journal/journalStore.ts), [journal/JournalPanel.tsx](src/journal/JournalPanel.tsx) | Observation store; add (text+photo via dialog), list, delete, blob-URL photo render |
+| [export/pdfExport.ts](src/export/pdfExport.ts) | `buildPlanPdf` (jsPDF; lazy-imported); stage snapshot + name/timestamp/scale bar |
+| [canvas/stageRegistry.ts](src/canvas/stageRegistry.ts) | Shared handle to the live Konva stage for export |
 
 ## State and data flow
 
@@ -292,13 +296,14 @@ Concerns the current design handles correctly:
   §6.2 Zod contract, OpenAI-compat shaping/parsing, cleanup-apply
   mapping, Permapeople normalization/adapter, and the write-through
   cache wrapper (hit/miss/offline), the SSE delta parser + `chatStream`,
-  and §6.4 context ordering/voice/window. 53 tests passing.
+  §6.4 context ordering/voice/window, and PDF byte-stream build.
+  55 tests passing.
 - **`cargo test`** (`src-tauri/`): migrations (incl. 0002
   `consumed_at`), zip/unzip + atomic save, per-shape CRUD, Phase 2
   end-to-end, stroke CRUD, atomic `apply_cleanup` (+ rollback), settings
   upsert, Keychain plumbing, plant-cache upsert, planting round-trip,
   coach conversation/message + observation reads, journal photo copy +
-  path-traversal guard. 26 tests passing.
+  path-traversal guard, atomic PDF write. 27 tests passing.
 - **Playwright** is installed but no e2e is written yet. Phase 1
   acceptance criterion ("new → draw a bed → save → reopen → bed is
   there") is currently satisfied by the cargo end-to-end test, not by a
@@ -310,18 +315,19 @@ Concerns the current design handles correctly:
 - **Dev:** `pnpm tauri dev` — Vite dev server on `localhost:1420`,
   Rust binary in debug mode, full HMR for frontend.
 - **Production:** `pnpm tauri build` — Vite produces `dist/`, Tauri bundles
-  it into `target/release/bundle/macos/GardenAngel.app`. Frontend bundle is
-  ~664 kB minified (Konva dominates; Zod + AI, TanStack Query, coach).
-  Over the 600 kB soft line in AGENTS.md — acceptable for v0.1;
-  code-splitting the AI/plants/coach paths is the obvious lever if it
-  needs trimming.
+  it into `target/release/bundle/macos/GardenAngel.app`. Main bundle is
+  ~670 kB minified (Konva dominates); jsPDF is a ~350 kB **lazy chunk**
+  loaded only on PDF export (ADR-012). Over the 600 kB soft line in
+  AGENTS.md — acceptable for v0.1; further code-splitting the
+  AI/plants/coach paths is the next lever.
 
 ## What's deliberately not here yet
 
-Phases 7–8 from [docs/PLAN.md](docs/PLAN.md) introduce:
+Phase 8 from [docs/PLAN.md](docs/PLAN.md) remains:
 
-- PDF export (Phase 7).
-- macOS menu bar, icons, About window, polish (Phase 8).
+- macOS menu bar, app icon, About window, crash/error toast polish,
+  README screenshots, and the `v0.1.0` tag (Phase 8).
 
-Nothing in those phases exists yet. The data model already accommodates
-them; the UI does not surface them.
+The data model already accommodates the deferred v0.2 features
+(rotation, succession, perennial state, zones); the UI does not surface
+them.

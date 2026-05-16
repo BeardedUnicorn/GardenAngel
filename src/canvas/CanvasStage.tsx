@@ -7,6 +7,7 @@ import { PathShapeView } from "./shapes/PathShapeView";
 import { StructureShape } from "./shapes/StructureShape";
 import { StrokeShape } from "./shapes/StrokeShape";
 import { VertexEditor } from "./VertexEditor";
+import { stageRegistry } from "./stageRegistry";
 import {
   DEFAULT_PATH_WIDTH,
   DEFAULT_STRUCTURE_KIND,
@@ -87,6 +88,14 @@ export function CanvasStage() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Publish the live stage for PDF export; clear on unmount.
+  useEffect(() => {
+    stageRegistry.current = stageRef.current;
+    return () => {
+      stageRegistry.current = null;
+    };
+  });
 
   // Cancel any in-progress drawing when the tool or mode changes.
   useEffect(() => {

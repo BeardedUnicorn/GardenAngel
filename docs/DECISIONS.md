@@ -439,3 +439,44 @@ save/reopen. The renderer can't read the private temp working dir via
 - `observations` now has a write path; the read path already fed coach
   context since Phase 5 (ADR-010), so the coach sees journal notes with
   no further work.
+
+---
+
+## ADR-012: PDF export — canvas-unit legend, Rust write, lazy jsPDF
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+PLAN Phase 7 wants "Export Plan as PDF" with garden name, scale legend,
+and timestamp, and the legend "correct relative to the canvas scale
+reference." But v0.1 never captures a real pixels-per-foot (the §6.2
+`scale_reference` is optional and no UI sets it). jsPDF is also ~350 kB.
+
+### Decision
+- The snapshot is `stage.toDataURL({pixelRatio:2})` of the **Plan**
+  layer; export forces Plan mode and clears the selection first so
+  vertex handles aren't captured.
+- The scale bar is labelled in **canvas units**, sized from the current
+  viewport zoom (`stageWidth / viewportScale` units across the image,
+  bar = a "nice" quarter of that). Correct relative to the viewport;
+  honest about the absence of a foot calibration.
+- Bytes are written by a Rust `pdf_save(path, bytes)` command (tmp +
+  rename), consistent with "filesystem ops in Rust" (ADR-002), rather
+  than wiring `tauri-plugin-fs` write scope for an arbitrary path.
+- `pdfExport.ts` (and thus jsPDF) is a **dynamic import** so it stays
+  out of the main bundle (~670 kB) as a ~350 kB lazy chunk loaded only
+  when the user exports.
+
+### Rationale
+- A viewport-derived legend satisfies the acceptance ("correct relative
+  to the canvas scale reference") without inventing a foot scale the app
+  doesn't have.
+- Rust write keeps the file path private and the write atomic.
+- Lazy-loading respects the AGENTS.md bundle-size guidance.
+
+### Consequences
+- A foot-calibrated legend needs a garden-level pixels-per-foot input —
+  deferred to v0.2 (the schema already has lat/long/zone room).
+- The PDF reflects the current pan/zoom (what you see is what you
+  export); "fit all shapes" framing is a future nicety.

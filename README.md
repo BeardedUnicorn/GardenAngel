@@ -5,10 +5,11 @@ Sketch your space, let an AI tidy your geometry into editable beds and paths,
 add plantings from open plant databases, log a living journal, and chat with
 a permaculture coach.
 
-**Status:** v0.1 — early development. Phases 0–6 are in: project-file
+**Status:** v0.1 — late development. Phases 0–7 are in: project-file
 persistence, the drawing canvas, Sketch mode with AI cleanup,
 Permapeople plantings with companion suggestions, the permaculture
-coach, and the living journal. PDF export still to land.
+coach, the living journal, and PDF export. Final macOS polish (Phase 8)
+remains.
 
 ## Requirements
 
@@ -56,8 +57,9 @@ MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Michael Herold.
 
 - macOS only; no Windows / Linux / mobile builds.
 - No cloud sync, accounts, or multi-user.
-- PDF export is not yet implemented (planned for Phase 7). The AI
-  sketch cleanup and coach need an OpenAI-compatible API key, and plant
-  search needs Permapeople API keys — set both in Settings (stored in
-  the macOS Keychain). Coach is Cmd+J. Plant data © Permapeople.org,
-  CC BY-SA 4.0.
+- The AI sketch cleanup and coach need an OpenAI-compatible API key,
+  and plant search needs Permapeople API keys — set both in Settings
+  (stored in the macOS Keychain). Coach is Cmd+J; "Export PDF" snapshots
+  the Plan view. Plant data © Permapeople.org, CC BY-SA 4.0.
+- Final macOS polish (menu bar, About window, signed bundle) is Phase 8,
+  still in progress.

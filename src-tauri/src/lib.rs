@@ -1,6 +1,7 @@
 mod coach;
 mod db;
 mod error;
+mod export;
 mod journal;
 mod plants;
 mod project;
@@ -60,6 +61,7 @@ pub fn run() {
             journal::observations_list,
             journal::observation_delete,
             journal::observation_photo_read,
+            export::pdf_save,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GardenAngel");
