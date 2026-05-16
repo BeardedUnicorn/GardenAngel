@@ -8,6 +8,11 @@ const MIGRATIONS: &[(u32, &str, &str)] = &[
         "0002_sketch_consumed",
         include_str!("../migrations/0002_sketch_consumed.sql"),
     ),
+    (
+        3,
+        "0003_path_color",
+        include_str!("../migrations/0003_path_color.sql"),
+    ),
 ];
 
 pub fn apply_migrations(conn: &mut Connection) -> Result<()> {
@@ -96,6 +101,18 @@ mod tests {
             "sketch_strokes missing consumed_at column: {cols:?}"
         );
 
+        let path_cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(paths)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            path_cols.iter().any(|c| c == "color"),
+            "paths missing color column (migration 0003): {path_cols:?}"
+        );
+
         let applied: Vec<u32> = conn
             .prepare("SELECT version FROM _migrations ORDER BY version")
             .unwrap()
@@ -103,7 +120,7 @@ mod tests {
             .unwrap()
             .filter_map(|r| r.ok())
             .collect();
-        assert_eq!(applied, vec![1, 2]);
+        assert_eq!(applied, vec![1, 2, 3]);
     }
 
     #[test]

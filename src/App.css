@@ -814,3 +814,22 @@ button.danger:hover:not(:disabled) {
     background-color: #34342f;
   }
 }
+
+/* Path color picker row */
+.property-panel .color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.property-panel .color-row input[type="color"] {
+  width: 44px;
+  height: 28px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.property-panel .color-row button {
+  font-size: 0.78rem;
+  padding: 0.25em 0.6em;
+}

@@ -320,6 +320,7 @@ mod tests {
                     points: vec![[0.0, 50.0], [80.0, 55.0]],
                     width: 24.0,
                     material: None,
+                    color: None,
                 }],
                 structures: vec![],
                 consumed_stroke_ids: vec![s1.id, s2.id],

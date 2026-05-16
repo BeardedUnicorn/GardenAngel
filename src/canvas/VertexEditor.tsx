@@ -60,6 +60,7 @@ export function VertexEditor() {
                 points: next,
                 width: path.width,
                 material: path.material,
+                color: path.color,
               });
             }}
           />

@@ -9,6 +9,7 @@ import { StrokeShape } from "./shapes/StrokeShape";
 import { VertexEditor } from "./VertexEditor";
 import { stageRegistry } from "./stageRegistry";
 import {
+  DEFAULT_PATH_COLOR,
   DEFAULT_PATH_WIDTH,
   DEFAULT_STRUCTURE_KIND,
   MAX_SCALE,
@@ -268,6 +269,7 @@ export function CanvasStage() {
         points: drawing.points,
         width: DEFAULT_PATH_WIDTH,
         material: null,
+        color: DEFAULT_PATH_COLOR,
       });
       setDrawing({ kind: "idle" });
     }

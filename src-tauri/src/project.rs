@@ -509,6 +509,7 @@ mod tests {
                     points: vec![[0.0, 200.0], [120.0, 220.0], [240.0, 210.0]],
                     width: 24.0,
                     material: Some("mulch".into()),
+                    color: None,
                 },
             )
             .unwrap();

@@ -47,6 +47,7 @@ export interface PathShape {
   points: [number, number][];
   width: number;
   material: string | null;
+  color: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -56,7 +57,11 @@ export interface PathInput {
   points: [number, number][];
   width: number;
   material: string | null;
+  color: string | null;
 }
+
+/** Default path stroke when no color is set (matches PathShapeView). */
+export const DEFAULT_PATH_COLOR = "#a78b6e";
 
 export type StructureKind = "shed" | "fence" | "water" | "compost" | "tree" | "other";
 

@@ -128,6 +128,7 @@ function pathToInput(path: PathShape): PathInput {
     points: path.points,
     width: path.width,
     material: path.material,
+    color: path.color,
   };
 }
 
@@ -306,7 +307,13 @@ export const useCanvasStore = create<CanvasState & CanvasActions>((set, get) => 
       }),
       paths: preview.paths.map((p) => {
         collect(p.source_stroke_ids);
-        return { name: null, points: p.points, width: p.width, material: null };
+        return {
+          name: null,
+          points: p.points,
+          width: p.width,
+          material: null,
+          color: null,
+        };
       }),
       structures: preview.structures.map((st) => {
         collect(st.source_stroke_ids);

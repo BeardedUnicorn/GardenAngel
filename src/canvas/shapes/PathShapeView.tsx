@@ -30,7 +30,7 @@ export function PathShapeView({ path, isSelected, onSelect }: Props) {
     <Group onMouseDown={onTap} onTap={onTap}>
       <Line
         points={path.points.flat()}
-        stroke={isSelected ? SELECTED_COLOR : COLOR}
+        stroke={isSelected ? SELECTED_COLOR : path.color || COLOR}
         strokeWidth={path.width}
         lineCap="round"
         lineJoin="round"

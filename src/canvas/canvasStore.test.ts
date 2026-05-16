@@ -37,6 +37,7 @@ function makePath(overrides: Partial<PathShape> = {}): PathShape {
     ],
     width: 24,
     material: null,
+    color: null,
     created_at: "2026-05-16T00:00:00Z",
     updated_at: "2026-05-16T00:00:00Z",
     ...overrides,
@@ -392,7 +393,7 @@ describe("canvasStore", () => {
       mockedInvoke.mockResolvedValueOnce(path);
       const created = await useCanvasStore
         .getState()
-        .createPath({ name: null, points, width: 24, material: null });
+        .createPath({ name: null, points, width: 24, material: null, color: null });
       expect(created?.points).toEqual(points);
     });
   });
