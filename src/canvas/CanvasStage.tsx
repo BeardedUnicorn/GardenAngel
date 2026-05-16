@@ -5,6 +5,8 @@ import { useCanvasStore } from "./canvasStore";
 import { BedShape } from "./shapes/BedShape";
 import { PathShapeView } from "./shapes/PathShapeView";
 import { StructureShape } from "./shapes/StructureShape";
+import { StrokeShape } from "./shapes/StrokeShape";
+import { VertexEditor } from "./VertexEditor";
 import {
   DEFAULT_PATH_WIDTH,
   DEFAULT_STRUCTURE_KIND,
@@ -19,13 +21,19 @@ const MIN_CIRCLE_RADIUS = 4;
 const MIN_POLY_VERTICES = 3;
 const MIN_PATH_VERTICES = 2;
 const POLYGON_CLOSE_RADIUS = 8;
+// Freehand: drop near-duplicate points, and treat a stroke as a closed
+// region if it ends near where it started with enough points.
+const FREEHAND_MIN_STEP = 3;
+const FREEHAND_CLOSE_DIST = 18;
+const FREEHAND_MIN_POINTS = 4;
 
 type DrawingState =
   | { kind: "idle" }
   | { kind: "rect"; start: [number, number]; end: [number, number]; for: "bed" | "structure" }
   | { kind: "circle"; center: [number, number]; cursor: [number, number]; for: "bed" | "tree" }
   | { kind: "polygon"; points: [number, number][]; cursor: [number, number] | null }
-  | { kind: "path"; points: [number, number][]; cursor: [number, number] | null };
+  | { kind: "path"; points: [number, number][]; cursor: [number, number] | null }
+  | { kind: "freehand"; points: [number, number][] };
 
 function rectFromDrag(
   start: [number, number],
@@ -45,11 +53,13 @@ export function CanvasStage() {
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [drawing, setDrawing] = useState<DrawingState>({ kind: "idle" });
 
+  const mode = useCanvasStore((s) => s.mode);
   const viewport = useCanvasStore((s) => s.viewport);
   const setViewport = useCanvasStore((s) => s.setViewport);
   const beds = useCanvasStore((s) => s.beds);
   const paths = useCanvasStore((s) => s.paths);
   const structures = useCanvasStore((s) => s.structures);
+  const strokes = useCanvasStore((s) => s.strokes);
   const selection = useCanvasStore((s) => s.selection);
   const select = useCanvasStore((s) => s.select);
   const tool = useCanvasStore((s) => s.tool);
@@ -60,6 +70,8 @@ export function CanvasStage() {
   const deleteBed = useCanvasStore((s) => s.deleteBed);
   const deletePath = useCanvasStore((s) => s.deletePath);
   const deleteStructure = useCanvasStore((s) => s.deleteStructure);
+  const createStroke = useCanvasStore((s) => s.createStroke);
+  const setLabelingStroke = useCanvasStore((s) => s.setLabelingStroke);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -76,13 +88,11 @@ export function CanvasStage() {
     return () => ro.disconnect();
   }, []);
 
-  // Cancel any in-progress drawing when the tool changes.
+  // Cancel any in-progress drawing when the tool or mode changes.
   useEffect(() => {
     setDrawing({ kind: "idle" });
-  }, [tool]);
+  }, [tool, mode]);
 
-  // Keyboard: Enter/Escape during multi-vertex drawing, Delete to remove selection,
-  // tool shortcuts (V/R/P/T/S).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
@@ -120,7 +130,9 @@ export function CanvasStage() {
         return;
       }
 
-      const map: Record<string, Tool> = {
+      if (e.metaKey || e.ctrlKey) return;
+      const sketchMap: Record<string, Tool> = { v: "select", f: "freehand" };
+      const planMap: Record<string, Tool> = {
         v: "select",
         r: "rect-bed",
         c: "circle-bed",
@@ -129,14 +141,13 @@ export function CanvasStage() {
         s: "structure",
         o: "tree",
       };
-      const next = map[e.key.toLowerCase()];
-      if (next && !e.metaKey && !e.ctrlKey) setTool(next);
+      const next = (mode === "sketch" ? sketchMap : planMap)[e.key.toLowerCase()];
+      if (next) setTool(next);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // commitInProgress closes over drawing; we redeclare effect dependencies via the inline call.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing, selection, tool]);
+  }, [drawing, selection, tool, mode]);
 
   function screenToWorld(): [number, number] | null {
     const stage = stageRef.current;
@@ -149,7 +160,32 @@ export function CanvasStage() {
     ];
   }
 
+  async function finishFreehand(points: [number, number][]) {
+    if (points.length < FREEHAND_MIN_POINTS) {
+      setDrawing({ kind: "idle" });
+      return;
+    }
+    const first = points[0]!;
+    const last = points[points.length - 1]!;
+    const span = Math.hypot(last[0] - first[0], last[1] - first[1]) * viewport.scale;
+    const closed = span <= FREEHAND_CLOSE_DIST;
+    const pts = closed ? points.slice(0, -1) : points;
+    setDrawing({ kind: "idle" });
+    const stroke = await createStroke({
+      label: null,
+      points: pts,
+      color: null,
+      width: 2,
+      closed,
+    });
+    if (stroke) setLabelingStroke(stroke.id);
+  }
+
   function commitInProgress() {
+    if (drawing.kind === "freehand") {
+      void finishFreehand(drawing.points);
+      return;
+    }
     if (drawing.kind === "rect") {
       const { x, y, width, height } = rectFromDrag(drawing.start, drawing.end);
       if (width < MIN_RECT_SIZE || height < MIN_RECT_SIZE) {
@@ -185,12 +221,7 @@ export function CanvasStage() {
       }
       const geom = { cx: drawing.center[0], cy: drawing.center[1], radius };
       if (drawing.for === "tree") {
-        void createStructure({
-          name: null,
-          kind: "tree",
-          geometry: geom,
-          notes: null,
-        });
+        void createStructure({ name: null, kind: "tree", geometry: geom, notes: null });
       } else {
         void createBed({
           name: null,
@@ -267,6 +298,15 @@ export function CanvasStage() {
     const pt = screenToWorld();
     if (!pt) return;
 
+    if (mode === "sketch") {
+      if (tool === "freehand") {
+        setDrawing({ kind: "freehand", points: [pt] });
+      } else if (tool === "select" && onStage && selection) {
+        select(null);
+      }
+      return;
+    }
+
     if (tool === "rect-bed" || tool === "structure") {
       if (!onStage) return;
       setDrawing({
@@ -337,12 +377,19 @@ export function CanvasStage() {
       setDrawing({ ...drawing, cursor: pt });
     } else if (drawing.kind === "polygon" || drawing.kind === "path") {
       setDrawing({ ...drawing, cursor: pt });
+    } else if (drawing.kind === "freehand") {
+      const last = drawing.points[drawing.points.length - 1]!;
+      if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) >= FREEHAND_MIN_STEP) {
+        setDrawing({ ...drawing, points: [...drawing.points, pt] });
+      }
     }
   };
 
   const onMouseUp = () => {
     if (drawing.kind === "rect" || drawing.kind === "circle") {
       commitInProgress();
+    } else if (drawing.kind === "freehand") {
+      void finishFreehand(drawing.points);
     }
   };
 
@@ -380,30 +427,48 @@ export function CanvasStage() {
         onDragEnd={onDragEnd}
       >
         <Layer listening>
-          {beds.map((bed) => (
-            <BedShape
-              key={`bed-${bed.id}`}
-              bed={bed}
-              isSelected={selection?.kind === "bed" && selection.id === bed.id}
-              onSelect={() => select({ kind: "bed", id: bed.id })}
-            />
-          ))}
-          {paths.map((path) => (
-            <PathShapeView
-              key={`path-${path.id}`}
-              path={path}
-              isSelected={selection?.kind === "path" && selection.id === path.id}
-              onSelect={() => select({ kind: "path", id: path.id })}
-            />
-          ))}
-          {structures.map((structure) => (
-            <StructureShape
-              key={`structure-${structure.id}`}
-              structure={structure}
-              isSelected={selection?.kind === "structure" && selection.id === structure.id}
-              onSelect={() => select({ kind: "structure", id: structure.id })}
-            />
-          ))}
+          {mode === "plan" && (
+            <>
+              {beds.map((bed) => (
+                <BedShape
+                  key={`bed-${bed.id}`}
+                  bed={bed}
+                  isSelected={selection?.kind === "bed" && selection.id === bed.id}
+                  onSelect={() => select({ kind: "bed", id: bed.id })}
+                />
+              ))}
+              {paths.map((path) => (
+                <PathShapeView
+                  key={`path-${path.id}`}
+                  path={path}
+                  isSelected={selection?.kind === "path" && selection.id === path.id}
+                  onSelect={() => select({ kind: "path", id: path.id })}
+                />
+              ))}
+              {structures.map((structure) => (
+                <StructureShape
+                  key={`structure-${structure.id}`}
+                  structure={structure}
+                  isSelected={
+                    selection?.kind === "structure" && selection.id === structure.id
+                  }
+                  onSelect={() => select({ kind: "structure", id: structure.id })}
+                />
+              ))}
+              <VertexEditor />
+            </>
+          )}
+
+          {mode === "sketch" &&
+            strokes.map((stroke) => (
+              <StrokeShape
+                key={`stroke-${stroke.id}`}
+                stroke={stroke}
+                onClick={() => {
+                  if (tool === "select") setLabelingStroke(stroke.id);
+                }}
+              />
+            ))}
 
           <DrawingOverlay drawing={drawing} />
         </Layer>
@@ -470,6 +535,19 @@ function DrawingOverlay({ drawing }: { drawing: DrawingState }) {
         strokeWidth={2}
         lineCap="round"
         dash={[8, 4]}
+        listening={false}
+      />
+    );
+  }
+  if (drawing.kind === "freehand") {
+    if (drawing.points.length < 1) return null;
+    return (
+      <Line
+        points={drawing.points.flat()}
+        stroke="#3a3a36"
+        strokeWidth={2}
+        lineCap="round"
+        lineJoin="round"
         listening={false}
       />
     );

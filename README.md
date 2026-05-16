@@ -5,9 +5,9 @@ Sketch your space, let an AI tidy your geometry into editable beds and paths,
 add plantings from open plant databases, log a living journal, and chat with
 a permaculture coach.
 
-**Status:** v0.1 — early development. Currently scaffolded through Phase 1
-(project file persistence). Canvas, AI cleanup, coach, plants, journal, and
-PDF export still to land.
+**Status:** v0.1 — early development. Phases 0–3 are in: project-file
+persistence, the drawing canvas, and Sketch mode with AI cleanup. Coach,
+plants, journal, and PDF export still to land.
 
 ## Requirements
 
@@ -55,5 +55,6 @@ MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Michael Herold.
 
 - macOS only; no Windows / Linux / mobile builds.
 - No cloud sync, accounts, or multi-user.
-- Canvas drawing, AI sketch cleanup, plant data, coach, journal, and PDF
-  export are not yet implemented (planned for Phases 2–7).
+- Plant data, coach, journal, and PDF export are not yet implemented
+  (planned for Phases 4–7). AI sketch cleanup needs an OpenAI-compatible
+  API key (set it in Settings; stored in the macOS Keychain).

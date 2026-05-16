@@ -100,7 +100,7 @@ describe("canvasStore", () => {
   });
 
   describe("hydration", () => {
-    it("loads shapes from backend", async () => {
+    it("loads shapes + active strokes and lands in plan mode when shapes exist", async () => {
       const bed = makeBed();
       const path = makePath();
       const structure = makeStructure();
@@ -109,6 +109,7 @@ describe("canvasStore", () => {
         paths: [path],
         structures: [structure],
       });
+      mockedInvoke.mockResolvedValueOnce([]); // strokes_list
 
       await useCanvasStore.getState().hydrate();
       const state = useCanvasStore.getState();
@@ -116,6 +117,93 @@ describe("canvasStore", () => {
       expect(state.paths).toEqual([path]);
       expect(state.structures).toEqual([structure]);
       expect(state.undoStack).toEqual([]);
+      expect(state.mode).toBe("plan");
+    });
+
+    it("filters consumed strokes and starts in sketch mode with no shapes", async () => {
+      mockedInvoke.mockResolvedValueOnce({ beds: [], paths: [], structures: [] });
+      mockedInvoke.mockResolvedValueOnce([
+        {
+          id: 1,
+          garden_id: 1,
+          label: "raised bed",
+          points: [[0, 0], [1, 1]],
+          color: null,
+          width: null,
+          closed: true,
+          created_at: "2026-05-16T00:00:00Z",
+          consumed_at: null,
+        },
+        {
+          id: 2,
+          garden_id: 1,
+          label: "old",
+          points: [[0, 0]],
+          color: null,
+          width: null,
+          closed: false,
+          created_at: "2026-05-16T00:00:00Z",
+          consumed_at: "2026-05-16T01:00:00Z",
+        },
+      ]);
+
+      await useCanvasStore.getState().hydrate();
+      const state = useCanvasStore.getState();
+      expect(state.strokes.map((s) => s.id)).toEqual([1]);
+      expect(state.mode).toBe("sketch");
+    });
+  });
+
+  describe("sketch cleanup apply", () => {
+    it("maps preview to inputs, consumes only active strokes, switches to plan", async () => {
+      useCanvasStore.setState({
+        mode: "sketch",
+        strokes: [
+          {
+            id: 1,
+            garden_id: 1,
+            label: "raised bed",
+            points: [[0, 0], [10, 0], [10, 10]],
+            color: null,
+            width: null,
+            closed: true,
+            created_at: "2026-05-16T00:00:00Z",
+            consumed_at: null,
+          },
+        ],
+        cleanupPreview: {
+          beds: [
+            {
+              source_stroke_ids: [1, 99],
+              shape_type: "rect",
+              geometry: { x: 0, y: 0, width: 10, height: 10 },
+            },
+          ],
+          paths: [],
+          structures: [],
+          warnings: [],
+        },
+      });
+      const createdBed = makeBed({ id: 5 });
+      mockedInvoke.mockResolvedValueOnce({
+        beds: [createdBed],
+        paths: [],
+        structures: [],
+        consumed_stroke_ids: [1],
+      });
+
+      await useCanvasStore.getState().applyCleanup();
+      const state = useCanvasStore.getState();
+      expect(state.beds).toEqual([createdBed]);
+      expect(state.strokes).toEqual([]);
+      expect(state.cleanupPreview).toBeNull();
+      expect(state.mode).toBe("plan");
+
+      const callArg = mockedInvoke.mock.calls[0]?.[1] as {
+        apply: { consumed_stroke_ids: number[] };
+      };
+      // stroke 99 is not an active stroke -> filtered out
+      expect(callArg.apply.consumed_stroke_ids).toEqual([1]);
     });
   });
 

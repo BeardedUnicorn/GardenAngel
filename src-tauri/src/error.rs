@@ -14,6 +14,9 @@ pub enum SerializableError {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("Keychain error: {0}")]
+    Keyring(#[from] keyring::Error),
+
     #[error("No project is currently open")]
     NoProjectOpen,
 

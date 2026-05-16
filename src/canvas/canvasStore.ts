@@ -1,18 +1,29 @@
 import { create } from "zustand";
 import { useProjectStore } from "../project/projectStore";
-import { shapesApi } from "./shapesApi";
+import { useSettingsStore } from "../settings/settingsStore";
+import { createOpenAiCompatAdapter } from "../ai/openaiCompatAdapter";
+import {
+  CleanupError,
+  runSketchCleanup,
+  type CleanupOutput,
+  type CleanupRequestInput,
+} from "../ai/sketchCleanupClient";
+import { shapesApi, type CleanupApplyPayload } from "./shapesApi";
 import {
   DEFAULT_VIEWPORT,
   MAX_SCALE,
   MIN_SCALE,
   type Bed,
   type BedInput,
+  type CanvasMode,
   type PathInput,
   type PathShape,
   type Selection,
   type ShapesSnapshot,
+  type SketchStroke,
   type Structure,
   type StructureInput,
+  type StrokeInput,
   type Tool,
   type Viewport,
 } from "./types";
@@ -29,23 +40,42 @@ type UndoCommand =
   | { kind: "structure-delete"; structure: Structure };
 
 interface CanvasState {
+  mode: CanvasMode;
   viewport: Viewport;
   tool: Tool;
   beds: Bed[];
   paths: PathShape[];
   structures: Structure[];
+  strokes: SketchStroke[];
   selection: Selection | null;
   undoStack: UndoCommand[];
   isHydrating: boolean;
   lastError: string | null;
+  // Sketch cleanup flow (PLAN §6.2). Preview is held until the user
+  // applies or cancels; nothing touches the DB until apply.
+  cleanupBusy: boolean;
+  cleanupPreview: CleanupOutput | null;
+  cleanupWarnings: string[];
+  // Stroke whose label dialog is open (just-drawn, awaiting "this is a…").
+  labelingStrokeId: number | null;
 }
 
 interface CanvasActions {
+  setMode: (m: CanvasMode) => void;
   setViewport: (v: Viewport) => void;
   setTool: (t: Tool) => void;
   select: (s: Selection | null) => void;
   hydrate: () => Promise<void>;
   reset: () => void;
+
+  createStroke: (input: StrokeInput) => Promise<SketchStroke | null>;
+  deleteStroke: (id: number) => Promise<void>;
+  updateStrokeLabel: (id: number, label: string | null) => Promise<void>;
+  setLabelingStroke: (id: number | null) => void;
+
+  runCleanup: (canvasBounds: { width: number; height: number }) => Promise<void>;
+  applyCleanup: () => Promise<void>;
+  cancelCleanup: () => void;
 
   createBed: (input: BedInput) => Promise<Bed | null>;
   updateBed: (id: number, input: BedInput) => Promise<Bed | null>;
@@ -65,15 +95,21 @@ interface CanvasActions {
 }
 
 const initialState: CanvasState = {
+  mode: "sketch",
   viewport: DEFAULT_VIEWPORT,
   tool: "select",
   beds: [],
   paths: [],
   structures: [],
+  strokes: [],
   selection: null,
   undoStack: [],
   isHydrating: false,
   lastError: null,
+  cleanupBusy: false,
+  cleanupPreview: null,
+  cleanupWarnings: [],
+  labelingStrokeId: null,
 };
 
 function bedToInput(bed: Bed): BedInput {
@@ -125,6 +161,8 @@ function markDirty() {
 export const useCanvasStore = create<CanvasState & CanvasActions>((set, get) => ({
   ...initialState,
 
+  setMode: (m) => set({ mode: m, selection: null, tool: "select" }),
+
   setViewport: (v) => {
     const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale));
     set({ viewport: { ...v, scale } });
@@ -139,18 +177,167 @@ export const useCanvasStore = create<CanvasState & CanvasActions>((set, get) => 
   async hydrate() {
     set({ isHydrating: true, lastError: null });
     try {
-      const snap: ShapesSnapshot = await shapesApi.list();
+      const [snap, strokes]: [ShapesSnapshot, SketchStroke[]] = await Promise.all([
+        shapesApi.list(),
+        shapesApi.strokesList(),
+      ]);
+      const activeStrokes = strokes.filter((s) => s.consumed_at === null);
+      const hasShapes =
+        snap.beds.length + snap.paths.length + snap.structures.length > 0;
       set({
         beds: snap.beds,
         paths: snap.paths,
         structures: snap.structures,
+        strokes: activeStrokes,
+        // Land in plan mode if the project already has structured shapes,
+        // otherwise sketch mode to start drawing.
+        mode: hasShapes ? "plan" : "sketch",
+        tool: "select",
         selection: null,
         undoStack: [],
+        cleanupPreview: null,
+        cleanupWarnings: [],
       });
     } catch (err) {
       set({ lastError: errToString(err) });
     } finally {
       set({ isHydrating: false });
+    }
+  },
+
+  // ---- Sketch strokes ----
+  async createStroke(input) {
+    try {
+      const stroke = await shapesApi.strokeCreate(input);
+      set((s) => ({ strokes: [...s.strokes, stroke] }));
+      markDirty();
+      return stroke;
+    } catch (err) {
+      set({ lastError: errToString(err) });
+      return null;
+    }
+  },
+
+  async deleteStroke(id) {
+    try {
+      await shapesApi.strokeDelete(id);
+      set((s) => ({ strokes: removeById(s.strokes, id) }));
+      markDirty();
+    } catch (err) {
+      set({ lastError: errToString(err) });
+    }
+  },
+
+  async updateStrokeLabel(id, label) {
+    const stroke = get().strokes.find((s) => s.id === id);
+    if (!stroke) return;
+    try {
+      const updated = await shapesApi.strokeUpdate(id, {
+        label,
+        points: stroke.points,
+        color: stroke.color,
+        width: stroke.width,
+        closed: stroke.closed,
+      });
+      set((s) => ({ strokes: replaceById(s.strokes, updated) }));
+      markDirty();
+    } catch (err) {
+      set({ lastError: errToString(err) });
+    }
+  },
+
+  // ---- AI sketch cleanup (PLAN §6.2) ----
+  async runCleanup(canvasBounds) {
+    const strokes = get().strokes;
+    if (strokes.length === 0) {
+      set({ lastError: "Nothing to clean up — sketch some regions first." });
+      return;
+    }
+    set({ cleanupBusy: true, lastError: null });
+    try {
+      const config = await useSettingsStore.getState().resolveConfig();
+      const adapter = createOpenAiCompatAdapter(config);
+      const input: CleanupRequestInput = {
+        canvas_bounds: canvasBounds,
+        strokes: strokes.map((s) => ({
+          id: s.id,
+          label: s.label,
+          closed: s.closed,
+          points: s.points,
+        })),
+      };
+      const output = await runSketchCleanup(adapter, config.model, input);
+      set({ cleanupPreview: output, cleanupWarnings: output.warnings });
+    } catch (err) {
+      if (err instanceof CleanupError) {
+        set({ lastError: err.message, cleanupWarnings: err.warnings });
+      } else {
+        set({ lastError: errToString(err) });
+      }
+    } finally {
+      set({ cleanupBusy: false });
+    }
+  },
+
+  setLabelingStroke: (id) => set({ labelingStrokeId: id }),
+
+  cancelCleanup: () => set({ cleanupPreview: null, cleanupWarnings: [] }),
+
+  async applyCleanup() {
+    const preview = get().cleanupPreview;
+    if (!preview) return;
+    const activeIds = new Set(get().strokes.map((s) => s.id));
+    const consumed = new Set<number>();
+    const collect = (ids: number[]) =>
+      ids.forEach((id) => {
+        if (activeIds.has(id)) consumed.add(id);
+      });
+
+    const payload: CleanupApplyPayload = {
+      beds: preview.beds.map((b) => {
+        collect(b.source_stroke_ids);
+        return {
+          name: null,
+          shape_type: b.shape_type,
+          geometry: b.geometry,
+          soil_notes: null,
+          sun_exposure: null,
+        };
+      }),
+      paths: preview.paths.map((p) => {
+        collect(p.source_stroke_ids);
+        return { name: null, points: p.points, width: p.width, material: null };
+      }),
+      structures: preview.structures.map((st) => {
+        collect(st.source_stroke_ids);
+        return { name: null, kind: st.kind, geometry: st.geometry, notes: null };
+      }),
+      consumed_stroke_ids: [...consumed],
+    };
+
+    set({ cleanupBusy: true, lastError: null });
+    try {
+      const result = await shapesApi.applyCleanup(payload);
+      const consumedSet = new Set(result.consumed_stroke_ids);
+      set((s) => ({
+        beds: [...s.beds, ...result.beds],
+        paths: [...s.paths, ...result.paths],
+        structures: [...s.structures, ...result.structures],
+        strokes: s.strokes.filter((stroke) => !consumedSet.has(stroke.id)),
+        cleanupPreview: null,
+        cleanupWarnings: [],
+        // Cleanup is a bulk op outside the undo stack (ADR-007); the
+        // user reviews it in the preview before it ever lands.
+        undoStack: [],
+        mode: "plan",
+        tool: "select",
+        selection: null,
+      }));
+      markDirty();
+    } catch (err) {
+      set({ lastError: errToString(err) });
+    } finally {
+      set({ cleanupBusy: false });
     }
   },
 

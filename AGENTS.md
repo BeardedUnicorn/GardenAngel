@@ -11,9 +11,10 @@ plantings from open plant databases, log a living journal with photos, and
 chat with a mystically-voiced permaculture coach. Everything persists to a
 single `.gardenangel` project file (zip of SQLite + assets).
 
-**Current state:** Phases 0–2 are done — scaffold, project-file persistence,
-and a full Konva canvas with six drawing tools. Phases 3–8 (AI sketch
-cleanup, plants, coach, journal, PDF export, polish) are not yet built.
+**Current state:** Phases 0–3 are done — scaffold, project-file
+persistence, the Konva canvas with drawing tools, and Sketch mode with
+OpenAI-compatible AI cleanup + Plan-mode vertex editing. Phases 4–8
+(plants, coach, journal, PDF export, polish) are not yet built.
 
 ## Required reading, in order
 

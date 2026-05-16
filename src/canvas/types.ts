@@ -88,12 +88,35 @@ export interface ShapesSnapshot {
 
 export type Tool =
   | "select"
+  | "freehand"
   | "rect-bed"
   | "circle-bed"
   | "polygon-bed"
   | "path"
   | "structure"
   | "tree";
+
+export type CanvasMode = "sketch" | "plan";
+
+export interface SketchStroke {
+  id: number;
+  garden_id: number;
+  label: string | null;
+  points: [number, number][];
+  color: string | null;
+  width: number | null;
+  closed: boolean;
+  created_at: string;
+  consumed_at: string | null;
+}
+
+export interface StrokeInput {
+  label: string | null;
+  points: [number, number][];
+  color: string | null;
+  width: number | null;
+  closed: boolean;
+}
 
 export type ShapeKind = "bed" | "path" | "structure";
 

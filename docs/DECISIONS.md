@@ -163,3 +163,142 @@ are deferred.
 - When implementing drag in v0.2, ensure each drag pushes exactly one
   undo entry (capture before/after on dragStart/dragEnd, not on each
   drag event).
+
+**Update (2026-05-16, Phase 3):** Vertex editing landed in Phase 3 as the
+Phase 3 acceptance criteria require ("user can drag any vertex"). The
+"re-evaluate when references exist" hook in ADR-003 still stands for
+*redo*; reposition itself is now shipped. See **ADR-008**.
+
+---
+
+## ADR-005: Sketch cleanup is a separate, low-temperature, JSON-only call
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+PLAN §6.2 requires the sketch→geometry cleanup pass to be its own AI call
+with a narrow prompt and strict JSON schema — explicitly *not* the coach
+pipeline. We needed to fix the prompt shape and the failure contract.
+
+### Decision
+- One system prompt (`CLEANUP_SYSTEM_PROMPT` in
+  `src/coach/prompts/systemPrompts.ts`), one user message containing the
+  JSON input (`canvas_bounds`, optional `scale_reference`, `strokes`).
+- Call parameters fixed at `temperature: 0`,
+  `response_format: { type: "json_object" }`.
+- Output is parsed and validated with Zod (`cleanupOutputSchema`) before
+  anything touches the DB. Geometry must structurally match its
+  `shape_type` (a refine on the bed schema).
+- Any failure — network, non-JSON, schema mismatch — raises
+  `CleanupError`; the UI shows a friendly message + warnings and leaves
+  the sketch strokes completely untouched.
+- The full prompt text and revision history live in `docs/PROMPTS.md`
+  (append-only, never edit a shipped prompt in place).
+
+### Rationale
+Determinism and a hard validation boundary matter more than cleverness
+here: AI output is a *suggestion*, the user edits every vertex after, and
+a bad response must never corrupt or lose the sketch.
+
+### Consequences
+- "OpenAI-compatible" divergence (e.g. providers that ignore
+  `response_format`) will surface as Zod failures → safe fallback. Record
+  concrete provider quirks here as discovered.
+- The eval discipline in PLAN §7 applies when the cleanup prompt changes.
+
+---
+
+## ADR-006: Consumed strokes are stamped, not deleted (migration 0002)
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+PLAN says strokes are "Cleared (not deleted) when promoted to plan." The
+v1 schema had no column to express "this stroke became a shape."
+
+### Decision
+Migration `0002_sketch_consumed.sql` adds a nullable
+`sketch_strokes.consumed_at TEXT`. `sketch_apply_cleanup` sets it (in the
+same transaction that creates the shapes) instead of deleting the row.
+The sketch layer renders only strokes with `consumed_at IS NULL`.
+
+### Rationale
+- Keeps the original freehand ink recoverable (PLAN §4 treats vector
+  strokes as canonical).
+- A boolean stamp is the minimum surface that satisfies "cleared, not
+  deleted" without inventing un-cleanup UX in v0.1.
+- Honors migration discipline — new numbered migration, 0001 untouched.
+
+### Consequences
+- `strokes_list` returns all strokes; the frontend filters consumed ones.
+  A future "show original sketch" toggle is free.
+- Re-running cleanup can't double-consume: the UPDATE guards on
+  `consumed_at IS NULL` and errors if a stroke id is already consumed,
+  which also keeps `apply_cleanup` atomic.
+
+---
+
+## ADR-007: Cleanup apply is atomic and lives outside the undo stack
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+Applying cleanup creates N beds/paths/structures and consumes M strokes at
+once. The Phase 2 undo model (ADR-003) is per-shape-mutation and one-way.
+Making a bulk AI apply individually undoable would mean either N+M undo
+entries or a bespoke compound command — and un-consuming strokes needs a
+backend path that doesn't exist.
+
+### Decision
+`sketch_apply_cleanup` is a single Rust transaction (all shapes + all
+stroke stamps, or nothing). On the frontend, applying clears the undo
+stack rather than pushing entries. The user's safety net is the
+**preview** (Apply / Edit / Cancel) — nothing reaches the DB until they
+approve, and "Edit" returns them to the untouched sketch.
+
+### Rationale
+- Matches the Phase 3 acceptance (preview gate, atomic apply, editable
+  result) without the complexity of compound/inverse bulk commands.
+- Post-apply, every shape is a normal editable shape with normal
+  per-mutation undo — so granular control resumes immediately.
+
+### Consequences
+- There is no one-click "undo the whole cleanup." Re-sketching is the
+  recovery path in v0.1. Revisit if users ask for it (would need an
+  un-consume backend op + compound command — pairs naturally with the
+  redo work deferred in ADR-003).
+
+---
+
+## ADR-008: Vertex editing — snap on dragEnd, exactly one undo entry
+
+**Date:** 2026-05-16
+**Status:** Accepted (supersedes the deferral in ADR-004)
+
+### Context
+ADR-004 deferred drag-to-reposition. Phase 3 acceptance requires the user
+to "drag any vertex" of a cleaned shape, so it's now in scope.
+
+### Decision
+In Plan mode with the Select tool, the selected shape renders draggable
+square handles (`VertexEditor`): rect corners (opposite corner pinned),
+circle center + radius, polygon/path per-vertex. The shape geometry is
+recomputed and persisted **once, on Konva `dragEnd`** — which routes
+through the existing `updateBed/updatePath/updateStructure` actions and
+therefore pushes **exactly one** undo entry per drag (the very rule
+ADR-004 flagged for whoever implemented this).
+
+### Rationale
+- Commit-on-release is the simplest correct integration with the
+  Phase 2 undo model — no per-pointer-event churn, no partial states.
+- Handle size is scaled by `1/viewport.scale` so handles stay a constant
+  screen size at any zoom.
+
+### Consequences
+- The shape "snaps" to the new geometry on release rather than tracking
+  the handle live. Acceptable for v0.1; live-preview is a polish item.
+- Whole-shape translate (drag the body, not a vertex) is still not a
+  thing; only vertices/center move. Out of scope until asked for.

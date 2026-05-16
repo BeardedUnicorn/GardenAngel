@@ -3,8 +3,12 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { CanvasStage } from "./canvas/CanvasStage";
 import { ToolPalette } from "./canvas/ToolPalette";
 import { PropertyPanel } from "./canvas/PropertyPanel";
+import { StrokeLabelDialog } from "./canvas/StrokeLabelDialog";
+import { CleanupPreview } from "./canvas/CleanupPreview";
 import { useCanvasStore } from "./canvas/canvasStore";
 import { useProjectStore } from "./project/projectStore";
+import { useSettingsStore } from "./settings/settingsStore";
+import { SettingsPanel } from "./settings/SettingsPanel";
 import "./App.css";
 
 const FILE_FILTER = [{ name: "GardenAngel Project", extensions: ["gardenangel"] }];
@@ -17,6 +21,10 @@ export default function App() {
   const clearCanvasError = useCanvasStore((s) => s.clearError);
   const undo = useCanvasStore((s) => s.undo);
   const canUndo = useCanvasStore((s) => s.canUndo());
+  const mode = useCanvasStore((s) => s.mode);
+  const setMode = useCanvasStore((s) => s.setMode);
+  const loadSettings = useSettingsStore((s) => s.load);
+  const openSettings = useSettingsStore((s) => s.open);
 
   useEffect(() => {
     void refresh();
@@ -25,10 +33,11 @@ export default function App() {
   useEffect(() => {
     if (current) {
       void hydrate();
+      void loadSettings();
     } else {
       resetCanvas();
     }
-  }, [current, hydrate, resetCanvas]);
+  }, [current, hydrate, resetCanvas, loadSettings]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,6 +59,22 @@ export default function App() {
       <header className="topbar">
         <h1>GardenAngel</h1>
         <div className="topbar-actions">
+          {current && (
+            <div className="mode-toggle">
+              <button
+                className={mode === "sketch" ? "active" : ""}
+                onClick={() => setMode("sketch")}
+              >
+                Sketch
+              </button>
+              <button
+                className={mode === "plan" ? "active" : ""}
+                onClick={() => setMode("plan")}
+              >
+                Plan
+              </button>
+            </div>
+          )}
           <button disabled={isBusy} onClick={onNew}>
             New
           </button>
@@ -62,6 +87,7 @@ export default function App() {
           <button disabled={!canUndo} onClick={() => void undo()}>
             Undo
           </button>
+          {current && <button onClick={openSettings}>Settings</button>}
           {current && (
             <button disabled={isBusy} onClick={onClose}>
               Close
@@ -81,6 +107,10 @@ export default function App() {
           <p>No project open. Create a new garden plan or open an existing one.</p>
         </main>
       )}
+
+      <StrokeLabelDialog />
+      <CleanupPreview />
+      <SettingsPanel />
 
       {errorMessage && (
         <div className="error-toast" role="alert">

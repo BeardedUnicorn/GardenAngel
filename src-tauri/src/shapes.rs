@@ -4,7 +4,10 @@ use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-const GARDEN_ID: i64 = 1;
+/// v0.1 supports one garden per file, always id=1. Shared so sibling
+/// modules (sketch cleanup) scope to the same garden instead of
+/// re-declaring the literal.
+pub const GARDEN_ID: i64 = 1;
 
 // =========================================================================
 // Common helpers
