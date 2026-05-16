@@ -302,3 +302,53 @@ ADR-004 flagged for whoever implemented this).
   the handle live. Acceptable for v0.1; live-preview is a polish item.
 - Whole-shape translate (drag the body, not a vertex) is still not a
   thing; only vertices/center move. Out of scope until asked for.
+
+---
+
+## ADR-009: Permapeople companions are names; cache wrapper lives in the frontend
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+PLAN §6.3 types `PlantDetail.companions` / `antagonists` as arrays of
+`external_id`s, and says "All reads go through a cache wrapper that checks
+`plant_cache` first." Two realities forced small calls:
+
+1. The Permapeople API exposes companion/antagonist info only as
+   free-text names inside the `data[]` key/value list (keys like
+   "Combine with" / "Avoid"), not as plant ids. There is no reliable
+   id mapping.
+2. AGENTS.md mandates all frontend HTTP go through
+   `@tauri-apps/plugin-http`. The network adapter therefore lives in the
+   frontend, while the cache (SQLite) lives in Rust.
+
+### Decision
+- `companions` / `antagonists` hold **names** (strings split on `,`/`;`),
+  shown verbatim in the Plantings panel. The §6.3 "external_ids" intent
+  is recorded as aspirational; revisit if/when a provider gives ids.
+- The cache wrapper (`plants/plantCache.ts`) is a thin frontend module:
+  `resolvePlantDetail` calls the Rust `plant_cache_get` command first,
+  and only on a miss calls the network adapter, then writes back via
+  `plant_cache_put`. The whole normalized `PlantDetail` is stored as the
+  cache row's `data_json`, so reads need no re-normalization and are
+  provider-agnostic.
+- Permapeople key id + secret are two more Keychain secrets
+  (`permapeople-key-id`, `permapeople-key-secret`), consistent with
+  ADR-001.
+
+### Rationale
+- Showing the names is honest and immediately useful; fabricating id
+  links would be worse than text.
+- Keeping the cache check in a frontend wrapper (over typed Rust
+  commands) keeps the network call where the plugin-http rule wants it,
+  without leaking the working-dir DB path to the renderer (ADR-002 still
+  holds — the frontend never runs SQL).
+
+### Consequences
+- Offline behaviour matches the Phase 4 acceptance: once a plant is added
+  (network fetch + write-through), reopening shows companions from cache
+  with zero network calls. First-fetch network failure surfaces as a
+  clear error and adds nothing.
+- A future "link companion name → cached plant" enhancement is purely
+  additive (string match against `plant_cache.common_name`).

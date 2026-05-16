@@ -8,23 +8,30 @@ export function SettingsPanel() {
     baseUrl,
     model,
     hasApiKey,
+    hasPermapeople,
     isBusy,
     lastError,
     saveConfig,
     setApiKey,
     clearApiKey,
+    setPermapeopleKeys,
+    clearPermapeopleKeys,
     clearError,
   } = useSettingsStore();
 
   const [draftBaseUrl, setDraftBaseUrl] = useState(baseUrl);
   const [draftModel, setDraftModel] = useState(model);
   const [draftKey, setDraftKey] = useState("");
+  const [draftPpId, setDraftPpId] = useState("");
+  const [draftPpSecret, setDraftPpSecret] = useState("");
 
   useEffect(() => {
     if (isOpen) {
       setDraftBaseUrl(baseUrl);
       setDraftModel(model);
       setDraftKey("");
+      setDraftPpId("");
+      setDraftPpSecret("");
     }
   }, [isOpen, baseUrl, model]);
 
@@ -95,6 +102,57 @@ export function SettingsPanel() {
             onClick={() => void clearApiKey()}
           >
             Remove key
+          </button>
+        </div>
+
+        <hr />
+
+        <p className="dim small">
+          Permapeople API keys (for plant search &amp; companions). Stored in
+          the Keychain. Data © Permapeople.org, CC BY-SA 4.0.
+        </p>
+        <label>
+          Permapeople key ID{" "}
+          {hasPermapeople && <span className="badge">set</span>}
+          <input
+            type="password"
+            value={draftPpId}
+            onChange={(e) => setDraftPpId(e.currentTarget.value)}
+            placeholder={hasPermapeople ? "•••••••• (stored)" : "key id"}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          Permapeople key secret
+          <input
+            type="password"
+            value={draftPpSecret}
+            onChange={(e) => setDraftPpSecret(e.currentTarget.value)}
+            placeholder={hasPermapeople ? "•••••••• (stored)" : "key secret"}
+            autoComplete="off"
+          />
+        </label>
+        <div className="modal-actions">
+          <button
+            disabled={
+              isBusy ||
+              draftPpId.trim().length === 0 ||
+              draftPpSecret.trim().length === 0
+            }
+            onClick={async () => {
+              await setPermapeopleKeys(draftPpId.trim(), draftPpSecret.trim());
+              setDraftPpId("");
+              setDraftPpSecret("");
+            }}
+          >
+            Save Permapeople keys
+          </button>
+          <button
+            className="danger"
+            disabled={isBusy || !hasPermapeople}
+            onClick={() => void clearPermapeopleKeys()}
+          >
+            Remove keys
           </button>
         </div>
 

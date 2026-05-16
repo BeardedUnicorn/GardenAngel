@@ -503,3 +503,96 @@ button.danger:hover:not(:disabled) {
     color: #ecebe6;
   }
 }
+
+/* ---- Phase 4: plants ---- */
+
+.plantings {
+  border-top: 1px solid #e2e2e0;
+  margin-top: 0.5rem;
+  padding-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.plantings h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6a6a64;
+}
+
+.plant-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.plant-picker input {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.4em 0.55em;
+  border: 1px solid #d3d3cf;
+  border-radius: 5px;
+  background-color: #ffffff;
+  color: #1c1c1a;
+}
+
+.plant-results,
+.planting-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.plant-results button {
+  width: 100%;
+  text-align: left;
+  font-size: 0.85rem;
+  padding: 0.4em 0.6em;
+}
+
+.planting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.planting-row .danger {
+  padding: 0.2em 0.55em;
+  font-size: 0.78rem;
+}
+
+.companion-line,
+.antagonist-line {
+  margin: 0.15rem 0 0.3rem;
+  font-size: 0.8rem;
+}
+
+.companion-line strong {
+  color: #1f7a3d;
+}
+
+.antagonist-line strong {
+  color: #c54a3f;
+}
+
+@media (prefers-color-scheme: dark) {
+  .plantings,
+  .plant-picker input {
+    border-color: #34342f;
+  }
+  .plant-picker input {
+    background-color: #2a2a27;
+    color: #ecebe6;
+  }
+  .plantings h3 {
+    color: #9c9a92;
+  }
+}

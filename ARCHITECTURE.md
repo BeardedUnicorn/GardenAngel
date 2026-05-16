@@ -11,9 +11,10 @@ GardenAngel is a local-first macOS desktop app for permaculture-minded garden
 planning. The user keeps all data in a single `.gardenangel` project file (a
 zip containing SQLite + manifest + assets). A React frontend renders a 2D
 top-down canvas of beds, paths, structures, and trees; a Rust backend owns
-file I/O and persistence. **Phase 3 is in:** a Sketch mode (freehand vector
-strokes) feeds an OpenAI-compatible AI cleanup pass that snaps strokes into
-editable beds/paths/structures, with vertex editing in Plan mode. The coach
+file I/O and persistence. **Phases 3–4 are in:** a Sketch mode (freehand
+vector strokes) feeds an OpenAI-compatible AI cleanup pass into editable
+shapes (Plan-mode vertex editing); beds carry plantings sourced from
+Permapeople with offline-cached companion/antagonist guidance. The coach
 (Phase 5) and remaining phases are still not present in code.
 
 ## Tech stack at a glance
@@ -25,7 +26,7 @@ editable beds/paths/structures, with vertex editing in Plan mode. The coach
 | Build | Vite 7 |
 | Canvas | `react-konva` 19 over `konva` 9 |
 | Client state | Zustand 5 |
-| Server state | TanStack Query 5 (installed for Phase 4 plant API; not yet exercised) |
+| Server state | TanStack Query 5 — plant search-as-you-type (`QueryClientProvider` in main.tsx) |
 | Validation | Zod — sketch-cleanup output validation (`cleanupOutputSchema`) |
 | DB | SQLite via `rusqlite` (bundled) in Rust |
 | Zip | `zip` 2.x in Rust |
@@ -109,8 +110,8 @@ phases — this avoids schema churn as features land. Tables:
 - `beds` — bed shapes (rect / polygon / circle); has Phase 2 CRUD
 - `paths` — path polylines with width; has Phase 2 CRUD
 - `structures` — sheds, fences, water, compost, trees, other; has Phase 2 CRUD
-- `plantings` — bed↔plant pairings (Phase 4)
-- `plant_cache` — write-through cache of Permapeople/etc. lookups (Phase 4)
+- `plantings` — bed↔plant pairings; has Phase 4 create/list/delete (status defaults `planned`)
+- `plant_cache` — write-through cache of plant lookups; has Phase 4 get/put (upsert on `external_id`)
 - `observations` — journal entries with optional photo (Phase 6)
 - `coach_conversations`, `coach_messages` — coach chat history (Phase 5)
 - `settings` — key/value config (AI base URL, model); has Phase 3 get/set/all
@@ -134,6 +135,7 @@ requirements).
 | [sketch.rs](src-tauri/src/sketch.rs) | `strokes_list`, `stroke_create/update/delete`, `sketch_apply_cleanup` (atomic: create shapes + stamp `consumed_at` in one transaction) |
 | [secret.rs](src-tauri/src/secret.rs) | `secret_set/get/has/delete` → macOS Keychain via `keyring` (ADR-001) |
 | [settings.rs](src-tauri/src/settings.rs) | `settings_get_all`, `setting_get/set` over the `settings` table |
+| [plants.rs](src-tauri/src/plants.rs) | `plant_cache_get/put` (write-through store), `plantings_list/create/delete` (guards bed exists) |
 
 Pattern: every command takes `State<'_, ProjectState>`, calls
 `state.with_db(|conn| …)` to acquire a `rusqlite::Connection` against the
@@ -159,11 +161,15 @@ which serializes to a plain string for the frontend.
 | [ai/types.ts](src/ai/types.ts), [ai/openaiCompatAdapter.ts](src/ai/openaiCompatAdapter.ts) | `ModelAdapter` interface; OpenAI-compat adapter over `tauri-plugin-http` (injectable transport) |
 | [ai/sketchCleanupClient.ts](src/ai/sketchCleanupClient.ts) | Zod `cleanupOutputSchema`, `runSketchCleanup`, `CleanupError` (PLAN §6.2) |
 | [coach/prompts/systemPrompts.ts](src/coach/prompts/systemPrompts.ts) | `CLEANUP_SYSTEM_PROMPT` (coach voice prompts land in Phase 5) |
-| [settings/settingsStore.ts](src/settings/settingsStore.ts), [settings/SettingsPanel.tsx](src/settings/SettingsPanel.tsx) | Model config store (base URL/model + Keychain key), settings modal |
+| [settings/settingsStore.ts](src/settings/settingsStore.ts), [settings/SettingsPanel.tsx](src/settings/SettingsPanel.tsx) | Model config + Permapeople keys (Keychain), settings modal |
+| [plants/permapeopleAdapter.ts](src/plants/permapeopleAdapter.ts) | `PlantAdapter` for Permapeople (search/getById, key headers, `normalizePermapeoplePlant`) |
+| [plants/plantCache.ts](src/plants/plantCache.ts) | Write-through wrapper: Rust cache first, network fallback, write back (ADR-009) |
+| [plants/plantsStore.ts](src/plants/plantsStore.ts) | Zustand: per-bed plantings + cached companion details |
+| [plants/PlantPicker.tsx](src/plants/PlantPicker.tsx), [plants/PlantingsSection.tsx](src/plants/PlantingsSection.tsx) | Debounced search-as-you-type; per-bed plantings + companion/antagonist lines |
 
 ## State and data flow
 
-Three Zustand stores at present:
+Four Zustand stores plus TanStack Query for plant search:
 
 - **`useProjectStore`** owns the project file lifecycle. State: `current`
   (project meta), `isDirty`, `isBusy`, `lastError`.
@@ -175,11 +181,17 @@ Three Zustand stores at present:
   `labelingStrokeId`). Shape mutations are async, server-first: call a
   Rust command, apply the response, push an inverse for undo, mark dirty.
 
-- **`useSettingsStore`** owns model config. Non-secret fields (base URL,
-  model) persist to the `settings` table; the API key goes to the
-  Keychain via `secret_*`. `resolveConfig()` transiently fetches the key
-  only at call time — it's never held in renderer state (it's attached to
-  the request inside the adapter).
+- **`useSettingsStore`** owns model config + Permapeople keys. Non-secret
+  fields (base URL, model) persist to the `settings` table; all keys go
+  to the Keychain via `secret_*`. `resolveConfig()` /
+  `resolvePermapeople()` fetch secrets transiently at call time — never
+  held in renderer state.
+
+- **`usePlantsStore`** owns per-bed plantings and the cached
+  `PlantDetail` map used for companion display. `loadForBed` reads
+  plantings + cache-only details (no network, offline-safe);
+  `addPlanting` resolves through the write-through cache then creates the
+  planting; `PlantPicker` search is a debounced TanStack Query.
 
 **Sketch cleanup flow.** `runCleanup()` assembles a §6.2 input from active
 strokes, resolves the model config, builds an `openaiCompatAdapter`, and
@@ -254,14 +266,15 @@ Concerns the current design handles correctly:
 
 ## Testing topology
 
-- **Vitest** (frontend, `pnpm test`): stores + geometry round-trips,
-  plus the §6.2 Zod contract, OpenAI-compat request shaping/parsing, and
-  the cleanup-apply mapping. 39 tests passing.
-- **`cargo test`** (`src-tauri/`): migration apply/idempotency (incl.
-  0002 `consumed_at`), zip/unzip + atomic save, per-shape CRUD, Phase 2
-  end-to-end, stroke CRUD, atomic `apply_cleanup` (incl. rollback on a
-  bad stroke id), settings upsert, and Keychain plumbing (mock backend).
-  17 tests passing.
+- **Vitest** (frontend, `pnpm test`): stores + geometry round-trips, the
+  §6.2 Zod contract, OpenAI-compat shaping/parsing, cleanup-apply
+  mapping, Permapeople normalization/adapter, and the write-through
+  cache wrapper (hit/miss/offline). 48 tests passing.
+- **`cargo test`** (`src-tauri/`): migrations (incl. 0002
+  `consumed_at`), zip/unzip + atomic save, per-shape CRUD, Phase 2
+  end-to-end, stroke CRUD, atomic `apply_cleanup` (+ rollback), settings
+  upsert, Keychain plumbing, plant-cache upsert, planting round-trip
+  (+ missing-bed guard). 20 tests passing.
 - **Playwright** is installed but no e2e is written yet. Phase 1
   acceptance criterion ("new → draw a bed → save → reopen → bed is
   there") is currently satisfied by the cargo end-to-end test, not by a
@@ -274,17 +287,15 @@ Concerns the current design handles correctly:
   Rust binary in debug mode, full HMR for frontend.
 - **Production:** `pnpm tauri build` — Vite produces `dist/`, Tauri bundles
   it into `target/release/bundle/macos/GardenAngel.app`. Frontend bundle is
-  ~615 kB minified (Konva dominates; Zod + AI layer added ~75 kB in
-  Phase 3). Just over the 600 kB soft line noted in AGENTS.md — acceptable
-  for v0.1; code-splitting the AI/cleanup path is the obvious lever if it
+  ~657 kB minified (Konva dominates; Zod + AI ~75 kB, TanStack Query
+  ~40 kB). Over the 600 kB soft line in AGENTS.md — acceptable for v0.1;
+  code-splitting the AI/cleanup + plants paths is the obvious lever if it
   needs trimming.
 
 ## What's deliberately not here yet
 
-Phases 4–8 from [docs/PLAN.md](docs/PLAN.md) introduce:
+Phases 5–8 from [docs/PLAN.md](docs/PLAN.md) introduce:
 
-- Permapeople plant adapter + companion suggestions (Phase 4) — bringing
-  TanStack Query into the dependency graph.
 - On-demand coach chat panel (Phase 5).
 - Journal entries with photos baked into the project zip (Phase 6).
 - PDF export (Phase 7).

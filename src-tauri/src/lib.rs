@@ -1,5 +1,6 @@
 mod db;
 mod error;
+mod plants;
 mod project;
 mod secret;
 mod settings;
@@ -43,6 +44,11 @@ pub fn run() {
             settings::settings_get_all,
             settings::setting_get,
             settings::setting_set,
+            plants::plant_cache_get,
+            plants::plant_cache_put,
+            plants::plantings_list,
+            plants::planting_create,
+            plants::planting_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GardenAngel");

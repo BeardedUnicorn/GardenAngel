@@ -1,4 +1,5 @@
 import { useCanvasStore } from "./canvasStore";
+import { PlantingsSection } from "../plants/PlantingsSection";
 import type { Bed, PathShape, Structure, StructureKind, SunExposure } from "./types";
 
 const SUN_OPTIONS: SunExposure[] = ["full", "partial", "shade"];
@@ -114,6 +115,7 @@ function BedEditor({ bed }: { bed: Bed }) {
       <button className="danger" onClick={() => void deleteBed(bed.id)}>
         Delete bed
       </button>
+      <PlantingsSection bedId={bed.id} />
     </aside>
   );
 }

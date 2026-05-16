@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 export const SETTING_BASE_URL = "ai_base_url";
 export const SETTING_MODEL = "ai_model";
 export const SECRET_API_KEY = "coach-api-key";
+export const SECRET_PP_KEY_ID = "permapeople-key-id";
+export const SECRET_PP_KEY_SECRET = "permapeople-key-secret";
 
 export const settingsApi = {
   getAll: () => invoke<Record<string, string>>("settings_get_all"),
