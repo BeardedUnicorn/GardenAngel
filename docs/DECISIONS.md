@@ -82,3 +82,84 @@ frontend never runs raw SQL.
 - `tauri-plugin-sql` dropped from `package.json` and `Cargo.toml`.
 - If the frontend ever needs ad-hoc query capability (unlikely in v0.1),
   we'd add a single `query` command behind a feature flag.
+
+---
+
+## ADR-003: Undo-only command pattern for Phase 2; defer redo to v0.2
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+The canonical plan for Phase 2 lists "Undo/redo using a command pattern
+(keep small; not full event sourcing)". Implementing **undo** with
+operational commands is straightforward — each mutation pushes an inverse
+that calls the corresponding backend command. **Redo**, however, has a
+real complication: redoing a `create` requires preserving the
+server-assigned auto-increment ID. Without that, the recreated shape gets
+a new ID, which (eventually) breaks references like `plantings.bed_id`.
+
+Options considered:
+1. Skip redo entirely for now.
+2. Allow redo but accept that recreated shapes get new IDs (ID drift).
+3. Add a backend command that re-inserts with a specified ID, plus
+   identity preservation across the undo/redo cycle.
+
+### Decision
+Ship Phase 2 with **undo only**. Pressing Cmd+Z (or the Undo button)
+reverses the most recent shape mutation. There is no redo. The undo
+stack is cleared on project open/close. Viewport changes (pan/zoom) and
+tool changes do not push to the undo stack.
+
+### Rationale
+- The Phase 2 acceptance smoke ("draw 4 shapes, save, reopen, all render
+  correctly") doesn't require redo.
+- Option 3 (backend ID preservation) is a real-but-non-trivial design
+  change that's better made when references actually exist
+  (Phase 4: plantings → beds). Doing it now is premature.
+- Option 2 (ID drift) introduces a subtle correctness footgun for later
+  phases. Better to defer than to ship a broken redo.
+
+### Consequences
+- `useCanvasStore` has `undoStack` and `canUndo()` / `undo()`, no redo.
+- Undo of `bed-delete` / `path-delete` / `structure-delete` recreates
+  the shape with a new ID; this is acceptable in v0.1 because no other
+  tables reference shapes yet.
+- When plantings land in Phase 4, ID-preserving operations become a
+  requirement — re-evaluate undo design at that point.
+
+---
+
+## ADR-004: Defer shape drag-to-reposition; v0.1 supports text-edit only
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+Phase 2 ships a Konva canvas with bed/path/structure primitives. Users
+can draw new shapes, select them, edit their text properties (name,
+soil notes, material, kind), and delete them. They cannot drag a shape
+to a new position or reshape its vertices.
+
+### Decision
+For v0.1 Phase 2, shapes are **placed at draw time** and may only be
+**deleted** if their position is wrong. Drag-to-move and vertex editing
+are deferred.
+
+### Rationale
+- The Phase 2 acceptance criterion is "shapes render at the same
+  positions after save/reopen" — strictly about persistence, not about
+  in-canvas reposition UX.
+- Drag handling with proper undo integration (snapshot before/after,
+  not per-pointer-event) takes meaningful effort and would push Phase 2
+  past one session.
+- Most v0.1 workflows expect AI cleanup (Phase 3) to set the canonical
+  positions; manual repositioning is a Phase-3-and-beyond concern.
+
+### Consequences
+- Shape positions are immutable for v0.1 short of delete + redraw.
+- Phase 3 (sketch cleanup) and Phase 5 (coach) don't depend on
+  reposition, so this isn't a blocker.
+- When implementing drag in v0.2, ensure each drag pushes exactly one
+  undo entry (capture before/after on dragStart/dragEnd, not on each
+  drag event).

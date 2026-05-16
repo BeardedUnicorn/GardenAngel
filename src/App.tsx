@@ -1,5 +1,9 @@
 import { useEffect } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { CanvasStage } from "./canvas/CanvasStage";
+import { ToolPalette } from "./canvas/ToolPalette";
+import { PropertyPanel } from "./canvas/PropertyPanel";
+import { useCanvasStore } from "./canvas/canvasStore";
 import { useProjectStore } from "./project/projectStore";
 import "./App.css";
 
@@ -7,10 +11,39 @@ const FILE_FILTER = [{ name: "GardenAngel Project", extensions: ["gardenangel"] 
 
 export default function App() {
   const { current, isBusy, isDirty, lastError, refresh, clearError } = useProjectStore();
+  const hydrate = useCanvasStore((s) => s.hydrate);
+  const resetCanvas = useCanvasStore((s) => s.reset);
+  const canvasError = useCanvasStore((s) => s.lastError);
+  const clearCanvasError = useCanvasStore((s) => s.clearError);
+  const undo = useCanvasStore((s) => s.undo);
+  const canUndo = useCanvasStore((s) => s.canUndo());
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (current) {
+      void hydrate();
+    } else {
+      resetCanvas();
+    }
+  }, [current, hydrate, resetCanvas]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        void undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo]);
+
+  const errorMessage = lastError ?? canvasError;
+  const dismissError = lastError ? clearError : clearCanvasError;
 
   return (
     <div className="app">
@@ -26,6 +59,9 @@ export default function App() {
           <button disabled={isBusy || !current} onClick={onSave}>
             Save{isDirty ? "*" : ""}
           </button>
+          <button disabled={!canUndo} onClick={() => void undo()}>
+            Undo
+          </button>
           {current && (
             <button disabled={isBusy} onClick={onClose}>
               Close
@@ -34,32 +70,22 @@ export default function App() {
         </div>
       </header>
 
-      <main className="main">
-        {current ? (
-          <section className="project-info">
-            <h2>{current.name}</h2>
-            <dl>
-              <dt>Path</dt>
-              <dd>{current.path}</dd>
-              <dt>Garden ID</dt>
-              <dd>{current.garden_id}</dd>
-              <dt>Created</dt>
-              <dd>{current.created_at}</dd>
-              <dt>Format</dt>
-              <dd>v{current.format_version}</dd>
-            </dl>
-          </section>
-        ) : (
-          <section className="empty">
-            <p>No project open. Create a new garden plan or open an existing one.</p>
-          </section>
-        )}
-      </main>
+      {current ? (
+        <div className="workspace">
+          <ToolPalette />
+          <CanvasStage />
+          <PropertyPanel />
+        </div>
+      ) : (
+        <main className="main empty">
+          <p>No project open. Create a new garden plan or open an existing one.</p>
+        </main>
+      )}
 
-      {lastError && (
+      {errorMessage && (
         <div className="error-toast" role="alert">
-          <span>{lastError}</span>
-          <button onClick={clearError}>dismiss</button>
+          <span>{errorMessage}</span>
+          <button onClick={dismissError}>dismiss</button>
         </div>
       )}
     </div>

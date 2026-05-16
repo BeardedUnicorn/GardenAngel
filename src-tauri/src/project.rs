@@ -52,6 +52,15 @@ impl OpenProject {
 #[derive(Default)]
 pub struct ProjectState(pub Mutex<Option<OpenProject>>);
 
+impl ProjectState {
+    pub fn with_db<R>(&self, f: impl FnOnce(&Connection) -> Result<R>) -> Result<R> {
+        let slot = self.0.lock().map_err(|e| SerializableError::Other(e.to_string()))?;
+        let project = slot.as_ref().ok_or(SerializableError::NoProjectOpen)?;
+        let conn = project.open_conn()?;
+        f(&conn)
+    }
+}
+
 #[tauri::command]
 pub fn project_new(
     path: String,
@@ -287,6 +296,8 @@ fn unzip_to(src: &Path, dest: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shapes::{insert_bed, insert_path, insert_structure, list_beds, list_paths,
+                        list_structures, BedInput, PathInput, StructureInput};
 
     fn roundtrip_dir() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -415,5 +426,118 @@ mod tests {
         assert_eq!(id, meta.garden_id);
         assert_eq!(name, meta.name);
         assert_eq!(created_at, meta.created_at);
+    }
+
+    #[test]
+    fn phase2_shapes_round_trip() {
+        let dest_dir = tempfile::tempdir().unwrap();
+        let dest = dest_dir.path().join("phase2.gardenangel");
+
+        // Build a working-dir project, seed a garden + 4 shapes, then save (zip).
+        let working_dir = tempfile::Builder::new()
+            .prefix("gardenangel-")
+            .tempdir()
+            .unwrap();
+        fs::create_dir_all(working_dir.path().join("assets/photos")).unwrap();
+        fs::create_dir_all(working_dir.path().join("assets/sketches")).unwrap();
+
+        let now = "2026-05-16T00:00:00Z".to_string();
+        let manifest = Manifest {
+            format_version: FORMAT_VERSION,
+            app_version: APP_VERSION.to_string(),
+            created_at: now.clone(),
+        };
+        fs::write(
+            working_dir.path().join(MANIFEST_FILE_NAME),
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        {
+            let mut conn = Connection::open(working_dir.path().join(DB_FILE_NAME)).unwrap();
+            apply_migrations(&mut conn).unwrap();
+            conn.execute(
+                "INSERT INTO gardens (id, name, created_at, updated_at) VALUES (1, ?1, ?2, ?2)",
+                params!["Phase2 Garden", now],
+            )
+            .unwrap();
+
+            insert_bed(
+                &conn,
+                &BedInput {
+                    name: Some("salsa".into()),
+                    shape_type: "rect".into(),
+                    geometry: serde_json::json!({
+                        "x": 10.0, "y": 20.0, "width": 100.0, "height": 60.0
+                    }),
+                    soil_notes: None,
+                    sun_exposure: Some("full".into()),
+                },
+            )
+            .unwrap();
+
+            insert_bed(
+                &conn,
+                &BedInput {
+                    name: Some("herbs".into()),
+                    shape_type: "polygon".into(),
+                    geometry: serde_json::json!({
+                        "points": [[0.0, 0.0], [50.0, 0.0], [50.0, 50.0], [0.0, 50.0]]
+                    }),
+                    soil_notes: None,
+                    sun_exposure: None,
+                },
+            )
+            .unwrap();
+
+            insert_path(
+                &conn,
+                &PathInput {
+                    name: Some("main path".into()),
+                    points: vec![[0.0, 200.0], [120.0, 220.0], [240.0, 210.0]],
+                    width: 24.0,
+                    material: Some("mulch".into()),
+                },
+            )
+            .unwrap();
+
+            insert_structure(
+                &conn,
+                &StructureInput {
+                    name: Some("shed".into()),
+                    kind: "shed".into(),
+                    geometry: serde_json::json!({
+                        "x": 300.0, "y": 100.0, "width": 80.0, "height": 60.0
+                    }),
+                    notes: None,
+                },
+            )
+            .unwrap();
+        }
+
+        zip_to(&working_dir.path().to_path_buf(), &dest).unwrap();
+
+        // Reopen via unzip and verify all shapes return at the same positions.
+        let restored = tempfile::tempdir().unwrap();
+        unzip_to(&dest, restored.path()).unwrap();
+        let conn = Connection::open(restored.path().join(DB_FILE_NAME)).unwrap();
+
+        let beds = list_beds(&conn).unwrap();
+        assert_eq!(beds.len(), 2);
+        assert_eq!(beds[0].name.as_deref(), Some("salsa"));
+        assert_eq!(beds[0].geometry["x"].as_f64(), Some(10.0));
+        assert_eq!(beds[1].shape_type, "polygon");
+        assert_eq!(beds[1].geometry["points"].as_array().unwrap().len(), 4);
+
+        let paths = list_paths(&conn).unwrap();
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].points.len(), 3);
+        assert_eq!(paths[0].points[1], [120.0, 220.0]);
+        assert_eq!(paths[0].width, 24.0);
+
+        let structures = list_structures(&conn).unwrap();
+        assert_eq!(structures.len(), 1);
+        assert_eq!(structures[0].kind, "shed");
+        assert_eq!(structures[0].geometry["width"].as_f64(), Some(80.0));
     }
 }
