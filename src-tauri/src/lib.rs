@@ -12,6 +12,62 @@ mod sketch;
 
 pub use error::SerializableError;
 
+/// Native macOS menu bar (Phase 8). Predefined items only — New/Open/
+/// Save/Export already have on-screen buttons; this satisfies the
+/// File/Edit/View/Help + About-with-version requirement without
+/// frontend event wiring.
+fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{AboutMetadataBuilder, MenuBuilder, SubmenuBuilder};
+
+    let about = AboutMetadataBuilder::new()
+        .name(Some("GardenAngel"))
+        .version(Some(env!("CARGO_PKG_VERSION")))
+        .copyright(Some("© 2026 Michael Herold"))
+        .build();
+
+    let app_menu = SubmenuBuilder::new(app, "GardenAngel")
+        .about(Some(about.clone()))
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+    let file_menu = SubmenuBuilder::new(app, "File").close_window().build()?;
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+    let view_menu = SubmenuBuilder::new(app, "View").fullscreen().build()?;
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .separator()
+        .close_window()
+        .build()?;
+    let help_menu = SubmenuBuilder::new(app, "Help")
+        .about(Some(about))
+        .build()?;
+
+    MenuBuilder::new(app)
+        .items(&[
+            &app_menu,
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &window_menu,
+            &help_menu,
+        ])
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -19,6 +75,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .manage(project::ProjectState::default())
+        .setup(|app| {
+            let menu = build_menu(app.handle())?;
+            app.set_menu(menu)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             project::project_new,
             project::project_open,
