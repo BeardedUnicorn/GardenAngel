@@ -1,10 +1,13 @@
 import { Group, Line, Text } from "react-konva";
 import type { PathShape } from "../types";
+import { shapeDragProps } from "./shapeDrag";
 
 interface Props {
   path: PathShape;
   isSelected: boolean;
+  draggable: boolean;
   onSelect: () => void;
+  onMove: (dx: number, dy: number) => void;
 }
 
 const COLOR = "#a78b6e";
@@ -17,7 +20,13 @@ function midpoint(points: [number, number][]): [number, number] {
   return points[Math.floor(points.length / 2)] ?? points[0]!;
 }
 
-export function PathShapeView({ path, isSelected, onSelect }: Props) {
+export function PathShapeView({
+  path,
+  isSelected,
+  draggable,
+  onSelect,
+  onMove,
+}: Props) {
   const onTap = (e: { cancelBubble: boolean }) => {
     e.cancelBubble = true;
     onSelect();
@@ -27,7 +36,11 @@ export function PathShapeView({ path, isSelected, onSelect }: Props) {
   const [mx, my] = midpoint(path.points);
 
   return (
-    <Group onMouseDown={onTap} onTap={onTap}>
+    <Group
+      onMouseDown={onTap}
+      onTap={onTap}
+      {...shapeDragProps(draggable, onSelect, onMove)}
+    >
       <Line
         points={path.points.flat()}
         stroke={isSelected ? SELECTED_COLOR : path.color || COLOR}

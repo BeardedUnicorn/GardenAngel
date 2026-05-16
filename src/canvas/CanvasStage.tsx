@@ -56,6 +56,29 @@ function rectFromDrag(
   };
 }
 
+// Translate any geometry variant by (dx, dy) for whole-object drag.
+function translateGeometry<T>(geom: T, dx: number, dy: number): T {
+  const g = geom as Record<string, unknown>;
+  if ("width" in g) {
+    return { ...g, x: (g.x as number) + dx, y: (g.y as number) + dy } as T;
+  }
+  if ("radius" in g) {
+    return { ...g, cx: (g.cx as number) + dx, cy: (g.cy as number) + dy } as T;
+  }
+  const points = (g.points as [number, number][]).map(
+    ([x, y]) => [x + dx, y + dy] as [number, number],
+  );
+  return { ...g, points } as T;
+}
+
+function shiftPoints(
+  points: [number, number][],
+  dx: number,
+  dy: number,
+): [number, number][] {
+  return points.map(([x, y]) => [x + dx, y + dy]);
+}
+
 export function CanvasStage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -76,6 +99,9 @@ export function CanvasStage() {
   const createBed = useCanvasStore((s) => s.createBed);
   const createPath = useCanvasStore((s) => s.createPath);
   const createStructure = useCanvasStore((s) => s.createStructure);
+  const updateBed = useCanvasStore((s) => s.updateBed);
+  const updatePath = useCanvasStore((s) => s.updatePath);
+  const updateStructure = useCanvasStore((s) => s.updateStructure);
   const deleteBed = useCanvasStore((s) => s.deleteBed);
   const deletePath = useCanvasStore((s) => s.deletePath);
   const deleteStructure = useCanvasStore((s) => s.deleteStructure);
@@ -467,6 +493,8 @@ export function CanvasStage() {
   };
 
   const stageDraggable = tool === "select" && drawing.kind === "idle";
+  // Whole-object drag is available with the Select tool in Plan mode.
+  const canDrag = mode === "plan" && tool === "select";
 
   return (
     <div ref={containerRef} className={`canvas-container tool-${tool}`}>
@@ -494,7 +522,17 @@ export function CanvasStage() {
                   key={`bed-${bed.id}`}
                   bed={bed}
                   isSelected={selection?.kind === "bed" && selection.id === bed.id}
+                  draggable={canDrag}
                   onSelect={() => select({ kind: "bed", id: bed.id })}
+                  onMove={(dx, dy) =>
+                    void updateBed(bed.id, {
+                      name: bed.name,
+                      shape_type: bed.shape_type,
+                      geometry: translateGeometry(bed.geometry, dx, dy),
+                      soil_notes: bed.soil_notes,
+                      sun_exposure: bed.sun_exposure,
+                    })
+                  }
                 />
               ))}
               {paths.map((path) => (
@@ -502,7 +540,17 @@ export function CanvasStage() {
                   key={`path-${path.id}`}
                   path={path}
                   isSelected={selection?.kind === "path" && selection.id === path.id}
+                  draggable={canDrag}
                   onSelect={() => select({ kind: "path", id: path.id })}
+                  onMove={(dx, dy) =>
+                    void updatePath(path.id, {
+                      name: path.name,
+                      points: shiftPoints(path.points, dx, dy),
+                      width: path.width,
+                      material: path.material,
+                      color: path.color,
+                    })
+                  }
                 />
               ))}
               {structures.map((structure) => (
@@ -512,7 +560,16 @@ export function CanvasStage() {
                   isSelected={
                     selection?.kind === "structure" && selection.id === structure.id
                   }
+                  draggable={canDrag}
                   onSelect={() => select({ kind: "structure", id: structure.id })}
+                  onMove={(dx, dy) =>
+                    void updateStructure(structure.id, {
+                      name: structure.name,
+                      kind: structure.kind,
+                      geometry: translateGeometry(structure.geometry, dx, dy),
+                      notes: structure.notes,
+                    })
+                  }
                 />
               ))}
               <VertexEditor />

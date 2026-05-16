@@ -300,8 +300,17 @@ ADR-004 flagged for whoever implemented this).
 ### Consequences
 - The shape "snaps" to the new geometry on release rather than tracking
   the handle live. Acceptable for v0.1; live-preview is a polish item.
-- Whole-shape translate (drag the body, not a vertex) is still not a
-  thing; only vertices/center move. Out of scope until asked for.
+
+**Update (2026-05-16): whole-object drag.** The body of any
+bed/path/structure is now draggable in Plan + Select mode (the prior
+"out of scope" note is retired). Same model as vertex editing: the
+shape `Group` is `draggable`; on Konva `dragEnd` we read the Group
+offset, snap the Group back to the origin, translate every geometry
+coordinate by (dx, dy), and persist via the existing `update*` actions
+— **exactly one undo entry per drag**. Shared in
+`shapes/shapeDrag.ts`; geometry translation in `CanvasStage`
+(`translateGeometry`/`shiftPoints`). Vertex handles still lag visually
+during a body drag and snap on release (same transient as above).
 
 ---
 

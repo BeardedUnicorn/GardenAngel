@@ -247,7 +247,8 @@ stroke whose endpoints nearly meet becomes a closed region, and the
 "This region is a…" label dialog opens. "Clean up sketch" runs the AI
 pass over labelled strokes. **Plan mode** offers the structured drawing
 tools below plus vertex editing (drag the square handles of a selected
-shape; geometry commits once on release — ADR-008).
+shape) and whole-object drag (drag the body to reposition); geometry
+commits once on release — ADR-008.
 
 Plan-mode tools (canonical Tool union in
 [canvas/types.ts](src/canvas/types.ts)):
@@ -285,7 +286,8 @@ Concerns the current design handles correctly:
   ID. Acceptable in v0.1 because no other tables reference shape IDs yet
   (plantings land in Phase 4 and will force a re-design).
 - Viewport, tool, and mode changes don't push to the stack.
-- Vertex-edit drags push exactly one entry (commit on dragEnd — ADR-008).
+- Vertex-edit *and* whole-object drags push exactly one entry (commit on
+  dragEnd — ADR-008).
 - AI cleanup apply is a bulk atomic op deliberately **outside** the undo
   stack; the preview gate is the safety net (ADR-007). Applying clears
   the stack.

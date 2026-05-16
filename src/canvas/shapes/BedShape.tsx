@@ -1,11 +1,14 @@
 import type { ReactElement } from "react";
 import { Circle, Group, Line, Rect, Text } from "react-konva";
 import type { Bed, CircleGeometry, PolygonGeometry, RectGeometry } from "../types";
+import { shapeDragProps } from "./shapeDrag";
 
 interface Props {
   bed: Bed;
   isSelected: boolean;
+  draggable: boolean;
   onSelect: () => void;
+  onMove: (dx: number, dy: number) => void;
 }
 
 const FILL = "#cdebd6";
@@ -15,7 +18,7 @@ const STROKE_WIDTH = 1.5;
 const SELECTED_STROKE_WIDTH = 2.5;
 const LABEL_WIDTH = 90;
 
-export function BedShape({ bed, isSelected, onSelect }: Props) {
+export function BedShape({ bed, isSelected, draggable, onSelect, onMove }: Props) {
   const stroke = isSelected ? SELECTED_STROKE : STROKE;
   const strokeWidth = isSelected ? SELECTED_STROKE_WIDTH : STROKE_WIDTH;
   const onTap = (e: { cancelBubble: boolean }) => {
@@ -75,7 +78,11 @@ export function BedShape({ bed, isSelected, onSelect }: Props) {
   const label = bed.name?.trim();
 
   return (
-    <Group onMouseDown={onTap} onTap={onTap}>
+    <Group
+      onMouseDown={onTap}
+      onTap={onTap}
+      {...shapeDragProps(draggable, onSelect, onMove)}
+    >
       {body}
       {label && (
         <Text

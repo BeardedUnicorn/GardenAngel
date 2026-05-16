@@ -8,11 +8,14 @@ import type {
   StructureKind,
 } from "../types";
 import { LINE_STRUCTURE_KINDS } from "../types";
+import { shapeDragProps } from "./shapeDrag";
 
 interface Props {
   structure: Structure;
   isSelected: boolean;
+  draggable: boolean;
   onSelect: () => void;
+  onMove: (dx: number, dy: number) => void;
 }
 
 const STYLE: Record<StructureKind, { fill: string; stroke: string }> = {
@@ -41,7 +44,13 @@ function canopyPoints(cx: number, cy: number, radius: number): number[] {
   return pts;
 }
 
-export function StructureShape({ structure, isSelected, onSelect }: Props) {
+export function StructureShape({
+  structure,
+  isSelected,
+  draggable,
+  onSelect,
+  onMove,
+}: Props) {
   const style = STYLE[structure.kind] ?? STYLE.other;
   const stroke = isSelected ? "#1a73e8" : style.stroke;
   const strokeWidth = isSelected ? 2.5 : 1.5;
@@ -136,7 +145,11 @@ export function StructureShape({ structure, isSelected, onSelect }: Props) {
   }
 
   return (
-    <Group onMouseDown={onTap} onTap={onTap}>
+    <Group
+      onMouseDown={onTap}
+      onTap={onTap}
+      {...shapeDragProps(draggable, onSelect, onMove)}
+    >
       {body}
       <Text
         x={labelX - 45}
