@@ -1,0 +1,56 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "GardenAngel",
+  "version": "0.1.0",
+  "identifier": "com.mike.gardenangel",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "GardenAngel",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Michael Herold",
+    "copyright": "Copyright (c) 2026 Michael Herold",
+    "category": "Productivity",
+    "shortDescription": "Permaculture-oriented backyard garden planner",
+    "longDescription": "GardenAngel is a local-first macOS app for planning, sketching, and tending a permaculture-minded backyard garden.",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["gardenangel"],
+        "name": "GardenAngel Project",
+        "description": "GardenAngel garden plan",
+        "role": "Editor",
+        "mimeType": "application/x-gardenangel"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}
