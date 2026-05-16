@@ -14,6 +14,7 @@ import {
   DEFAULT_STRUCTURE_KIND,
   MAX_SCALE,
   MIN_SCALE,
+  type LineStructureKind,
   type Tool,
 } from "./types";
 
@@ -35,6 +36,12 @@ type DrawingState =
   | { kind: "circle"; center: [number, number]; cursor: [number, number]; for: "bed" | "tree" }
   | { kind: "polygon"; points: [number, number][]; cursor: [number, number] | null }
   | { kind: "path"; points: [number, number][]; cursor: [number, number] | null }
+  | {
+      kind: "linestruct";
+      points: [number, number][];
+      cursor: [number, number] | null;
+      structKind: LineStructureKind;
+    }
   | { kind: "freehand"; points: [number, number][] };
 
 function rectFromDrag(
@@ -124,7 +131,11 @@ export function CanvasStage() {
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (drawing.kind === "polygon" || drawing.kind === "path") {
+        if (
+          drawing.kind === "polygon" ||
+          drawing.kind === "path" ||
+          drawing.kind === "linestruct"
+        ) {
           if (drawing.points.length > 0) {
             setDrawing({ ...drawing, points: drawing.points.slice(0, -1) });
           }
@@ -150,6 +161,8 @@ export function CanvasStage() {
         t: "path",
         s: "structure",
         o: "tree",
+        e: "fence",
+        l: "trellis",
       };
       const next = (mode === "sketch" ? sketchMap : planMap)[e.key.toLowerCase()];
       if (next) setTool(next);
@@ -272,6 +285,20 @@ export function CanvasStage() {
         color: DEFAULT_PATH_COLOR,
       });
       setDrawing({ kind: "idle" });
+      return;
+    }
+    if (drawing.kind === "linestruct") {
+      if (drawing.points.length < MIN_PATH_VERTICES) {
+        setDrawing({ kind: "idle" });
+        return;
+      }
+      void createStructure({
+        name: null,
+        kind: drawing.structKind,
+        geometry: { points: drawing.points },
+        notes: null,
+      });
+      setDrawing({ kind: "idle" });
     }
   }
 
@@ -374,6 +401,20 @@ export function CanvasStage() {
       return;
     }
 
+    if (tool === "fence" || tool === "trellis") {
+      if (drawing.kind !== "linestruct") {
+        setDrawing({
+          kind: "linestruct",
+          points: [pt],
+          cursor: pt,
+          structKind: tool,
+        });
+      } else {
+        setDrawing({ ...drawing, points: [...drawing.points, pt] });
+      }
+      return;
+    }
+
     if (tool === "select" && onStage && selection) {
       select(null);
     }
@@ -386,7 +427,11 @@ export function CanvasStage() {
       setDrawing({ ...drawing, end: pt });
     } else if (drawing.kind === "circle") {
       setDrawing({ ...drawing, cursor: pt });
-    } else if (drawing.kind === "polygon" || drawing.kind === "path") {
+    } else if (
+      drawing.kind === "polygon" ||
+      drawing.kind === "path" ||
+      drawing.kind === "linestruct"
+    ) {
       setDrawing({ ...drawing, cursor: pt });
     } else if (drawing.kind === "freehand") {
       const last = drawing.points[drawing.points.length - 1]!;
@@ -405,7 +450,11 @@ export function CanvasStage() {
   };
 
   const onDblClick = () => {
-    if (drawing.kind === "path" || drawing.kind === "polygon") {
+    if (
+      drawing.kind === "path" ||
+      drawing.kind === "polygon" ||
+      drawing.kind === "linestruct"
+    ) {
       commitInProgress();
     }
   };
@@ -546,6 +595,21 @@ function DrawingOverlay({ drawing }: { drawing: DrawingState }) {
         strokeWidth={2}
         lineCap="round"
         dash={[8, 4]}
+        listening={false}
+      />
+    );
+  }
+  if (drawing.kind === "linestruct") {
+    const pts = drawing.cursor ? [...drawing.points, drawing.cursor] : drawing.points;
+    if (pts.length < 1) return null;
+    return (
+      <Line
+        points={pts.flat()}
+        stroke="#1a73e8"
+        strokeWidth={3}
+        lineCap="round"
+        lineJoin="round"
+        dash={drawing.structKind === "trellis" ? [2, 4] : [8, 4]}
         listening={false}
       />
     );

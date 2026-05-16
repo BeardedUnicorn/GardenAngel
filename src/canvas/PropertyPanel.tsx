@@ -14,6 +14,7 @@ const SUN_OPTIONS: SunExposure[] = ["full", "partial", "shade"];
 const STRUCTURE_KINDS: StructureKind[] = [
   "shed",
   "fence",
+  "trellis",
   "water",
   "compost",
   "tree",

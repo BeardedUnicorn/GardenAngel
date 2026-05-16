@@ -183,7 +183,9 @@ button.danger:hover:not(:disabled) {
 }
 
 .canvas-container.tool-polygon-bed,
-.canvas-container.tool-path {
+.canvas-container.tool-path,
+.canvas-container.tool-fence,
+.canvas-container.tool-trellis {
   cursor: crosshair;
 }
 

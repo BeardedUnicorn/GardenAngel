@@ -63,7 +63,18 @@ export interface PathInput {
 /** Default path stroke when no color is set (matches PathShapeView). */
 export const DEFAULT_PATH_COLOR = "#a78b6e";
 
-export type StructureKind = "shed" | "fence" | "water" | "compost" | "tree" | "other";
+export type StructureKind =
+  | "shed"
+  | "fence"
+  | "trellis"
+  | "water"
+  | "compost"
+  | "tree"
+  | "other";
+
+/** Structure kinds drawn as an open polyline rather than a filled area. */
+export const LINE_STRUCTURE_KINDS = ["fence", "trellis"] as const;
+export type LineStructureKind = (typeof LINE_STRUCTURE_KINDS)[number];
 
 export type StructureGeometry = RectGeometry | PolygonGeometry | CircleGeometry;
 
@@ -99,7 +110,9 @@ export type Tool =
   | "polygon-bed"
   | "path"
   | "structure"
-  | "tree";
+  | "tree"
+  | "fence"
+  | "trellis";
 
 export type CanvasMode = "sketch" | "plan";
 

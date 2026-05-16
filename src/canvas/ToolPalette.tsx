@@ -21,6 +21,8 @@ const PLAN_TOOLS: ToolDef[] = [
   { id: "path", label: "Path", shortcut: "T", hint: "Click vertices, Enter to finish" },
   { id: "structure", label: "Structure", shortcut: "S", hint: "Drag a rectangle (shed)" },
   { id: "tree", label: "Tree", shortcut: "O", hint: "Drag canopy from center outward" },
+  { id: "fence", label: "Fence", shortcut: "E", hint: "Click vertices, Enter to finish" },
+  { id: "trellis", label: "Trellis", shortcut: "L", hint: "Click vertices, Enter to finish" },
 ];
 
 export function ToolPalette() {
