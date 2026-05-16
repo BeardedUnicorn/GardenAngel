@@ -85,9 +85,9 @@ export function StructureShape({ structure, isSelected, onSelect }: Props) {
     <Group onMouseDown={onTap} onTap={onTap}>
       {body}
       <Text
-        x={labelX - 30}
+        x={labelX - 45}
         y={labelY - 6}
-        width={60}
+        width={90}
         text={structure.name ?? structure.kind}
         fontSize={11}
         fill="#1c1c1a"
