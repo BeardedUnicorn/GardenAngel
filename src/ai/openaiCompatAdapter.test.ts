@@ -4,6 +4,7 @@ import {
   createOpenAiCompatAdapter,
   joinUrl,
   parseChatResponse,
+  parseOpenAiStream,
 } from "./openaiCompatAdapter";
 
 describe("joinUrl", () => {
@@ -58,6 +59,51 @@ describe("parseChatResponse", () => {
 
   it("throws on missing content", () => {
     expect(() => parseChatResponse(JSON.stringify({ choices: [] }))).toThrow();
+  });
+});
+
+describe("parseOpenAiStream", () => {
+  it("concatenates ordered deltas and ignores [DONE]/keepalive", () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"Bas"}}]}',
+      'data: {"choices":[{"delta":{"content":"il"}}]}',
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    expect(parseOpenAiStream(sse)).toEqual(["Bas", "il"]);
+    expect(parseOpenAiStream("garbage").length).toBe(0);
+  });
+});
+
+describe("createOpenAiCompatAdapter.chatStream", () => {
+  it("yields parsed deltas, falling back to plain JSON", async () => {
+    const sseAdapter = createOpenAiCompatAdapter(
+      { baseUrl: "https://x", apiKey: "k", model: "m" },
+      async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          'data: {"choices":[{"delta":{"content":"hi"}}]}\ndata: [DONE]\n',
+      }),
+    );
+    const chunks: string[] = [];
+    for await (const c of sseAdapter.chatStream!({ model: "m", messages: [] })) {
+      chunks.push(c);
+    }
+    expect(chunks.join("")).toBe("hi");
+
+    const jsonAdapter = createOpenAiCompatAdapter(
+      { baseUrl: "https://x", apiKey: "k", model: "m" },
+      async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ model: "m", choices: [{ message: { content: "whole" } }] }),
+      }),
+    );
+    const out: string[] = [];
+    for await (const c of jsonAdapter.chatStream!({ model: "m", messages: [] })) out.push(c);
+    expect(out.join("")).toBe("whole");
   });
 });
 

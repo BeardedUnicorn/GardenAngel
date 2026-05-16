@@ -352,3 +352,48 @@ PLAN §6.3 types `PlantDetail.companions` / `antagonists` as arrays of
   clear error and adds nothing.
 - A future "link companion name → cached plant" enhancement is purely
   additive (string match against `plant_cache.common_name`).
+
+---
+
+## ADR-010: Coach context is a fixed shape; streaming is buffered SSE re-emit
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+PLAN §6.4 fixes the coach context order and says "This is the only
+sanctioned context shape." PLAN §5/§8 ask for streaming responses, but
+`@tauri-apps/plugin-http` buffers the response body rather than exposing
+an incremental `ReadableStream` to the renderer.
+
+### Decision
+- `assembleCoachMessages` (CoachService.ts) is the single place context
+  is built, in exactly the §6.4 order: voice system prompt → garden
+  snapshot → active bed (incl. plantings + bed observations) → recent
+  observations (≤5) → history (sliding window, default 20) → user
+  message. Adding a new context type requires a new ADR.
+- The model adapter implements `chatStream` as an async iterable. With
+  `stream: true` requested, the buffered SSE body is parsed by the pure
+  `parseOpenAiStream` and the deltas are re-emitted in order; if the
+  provider ignored `stream:true`, it falls back to the plain JSON
+  content. The UI consumes the iterable and updates the last message as
+  chunks arrive — the contract is real even though the transport doesn't
+  deliver true token-by-token over the wire in v0.1.
+- One conversation per project (`coach_conversation_ensure`); messages
+  persist to `coach_messages`. Voice persists to the `settings` table
+  (`coach_voice`) and applies on the next message.
+
+### Rationale
+- A frozen context shape is the whole point of §6.4 — keeps the coach
+  auditable and prevents prompt sprawl.
+- Re-emitting buffered deltas keeps the streaming API/UX contract and
+  the eval surface stable; swapping in a true streaming transport later
+  is a localized change behind `chatStream`, no caller impact.
+
+### Consequences
+- Perceived latency is "whole answer then revealed quickly," not
+  true incremental tokens, until the transport supports streaming.
+- Observations feed context now (read path) even though the journal
+  write path is Phase 6 — the coach simply sees an empty list until then.
+- Eval discipline (PLAN §7): `src/coach/__evals__/evalSet.ts` holds the
+  10-prompt manual set; results go in docs/PROMPTS.md by hand.

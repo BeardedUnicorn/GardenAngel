@@ -94,5 +94,57 @@ export function createOpenAiCompatAdapter(
       }
       return parseChatResponse(text);
     },
+
+    async *chatStream(req: ChatRequest, signal?: AbortSignal): AsyncIterable<string> {
+      if (!config.baseUrl) throw new Error("No API base URL configured (Settings).");
+      if (!config.apiKey) throw new Error("No API key configured (Settings).");
+      const url = joinUrl(config.baseUrl, "chat/completions");
+      const init: Parameters<FetchLike>[1] = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(
+          buildChatBody({ ...req, model: req.model || config.model, stream: true }),
+        ),
+      };
+      if (signal) init.signal = signal;
+      const res = await fetchImpl(url, init);
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`Model request failed (HTTP ${res.status}): ${text.slice(0, 300)}`);
+      }
+      // Tauri's http transport buffers the body, so we parse the full SSE
+      // payload and re-emit deltas in order (ADR-010). Falls back to a
+      // plain JSON body if the provider ignored stream:true.
+      const deltas = parseOpenAiStream(text);
+      if (deltas.length > 0) {
+        for (const d of deltas) yield d;
+      } else {
+        yield parseChatResponse(text).content;
+      }
+    },
   };
+}
+
+/** Pure: extract ordered content deltas from an OpenAI SSE response. */
+export function parseOpenAiStream(raw: string): string[] {
+  const out: string[] = [];
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (payload === "" || payload === "[DONE]") continue;
+    try {
+      const json = JSON.parse(payload) as {
+        choices?: { delta?: { content?: string } }[];
+      };
+      const piece = json.choices?.[0]?.delta?.content;
+      if (typeof piece === "string" && piece.length > 0) out.push(piece);
+    } catch {
+      // Ignore keep-alive / non-JSON lines.
+    }
+  }
+  return out;
 }

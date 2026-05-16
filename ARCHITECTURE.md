@@ -11,11 +11,12 @@ GardenAngel is a local-first macOS desktop app for permaculture-minded garden
 planning. The user keeps all data in a single `.gardenangel` project file (a
 zip containing SQLite + manifest + assets). A React frontend renders a 2D
 top-down canvas of beds, paths, structures, and trees; a Rust backend owns
-file I/O and persistence. **Phases 3–4 are in:** a Sketch mode (freehand
+file I/O and persistence. **Phases 3–5 are in:** a Sketch mode (freehand
 vector strokes) feeds an OpenAI-compatible AI cleanup pass into editable
 shapes (Plan-mode vertex editing); beds carry plantings sourced from
-Permapeople with offline-cached companion/antagonist guidance. The coach
-(Phase 5) and remaining phases are still not present in code.
+Permapeople with offline-cached companion guidance; and an on-demand,
+mystically-voiced coach (Cmd+J) chats with §6.4 context assembly. The
+journal/PDF/polish phases are still not present in code.
 
 ## Tech stack at a glance
 
@@ -112,8 +113,8 @@ phases — this avoids schema churn as features land. Tables:
 - `structures` — sheds, fences, water, compost, trees, other; has Phase 2 CRUD
 - `plantings` — bed↔plant pairings; has Phase 4 create/list/delete (status defaults `planned`)
 - `plant_cache` — write-through cache of plant lookups; has Phase 4 get/put (upsert on `external_id`)
-- `observations` — journal entries with optional photo (Phase 6)
-- `coach_conversations`, `coach_messages` — coach chat history (Phase 5)
+- `observations` — journal entries; Phase 5 read paths (recent / per-bed) feed coach context; write path is Phase 6
+- `coach_conversations`, `coach_messages` — coach chat history; has Phase 5 ensure/list/add (one conversation per project)
 - `settings` — key/value config (AI base URL, model); has Phase 3 get/set/all
 
 Foreign keys are declared but not enforced (`PRAGMA foreign_keys` is off by
@@ -136,6 +137,7 @@ requirements).
 | [secret.rs](src-tauri/src/secret.rs) | `secret_set/get/has/delete` → macOS Keychain via `keyring` (ADR-001) |
 | [settings.rs](src-tauri/src/settings.rs) | `settings_get_all`, `setting_get/set` over the `settings` table |
 | [plants.rs](src-tauri/src/plants.rs) | `plant_cache_get/put` (write-through store), `plantings_list/create/delete` (guards bed exists) |
+| [coach.rs](src-tauri/src/coach.rs) | `coach_conversation_ensure`, `coach_messages_list/add` (role-guarded), `observations_recent/for_bed` |
 
 Pattern: every command takes `State<'_, ProjectState>`, calls
 `state.with_db(|conn| …)` to acquire a `rusqlite::Connection` against the
@@ -166,10 +168,14 @@ which serializes to a plain string for the frontend.
 | [plants/plantCache.ts](src/plants/plantCache.ts) | Write-through wrapper: Rust cache first, network fallback, write back (ADR-009) |
 | [plants/plantsStore.ts](src/plants/plantsStore.ts) | Zustand: per-bed plantings + cached companion details |
 | [plants/PlantPicker.tsx](src/plants/PlantPicker.tsx), [plants/PlantingsSection.tsx](src/plants/PlantingsSection.tsx) | Debounced search-as-you-type; per-bed plantings + companion/antagonist lines |
+| [coach/prompts/systemPrompts.ts](src/coach/prompts/systemPrompts.ts) | Cleanup prompt + mystical/plain coach prompts (`coachSystemPrompt`) |
+| [coach/CoachService.ts](src/coach/CoachService.ts) | Pure `assembleCoachMessages` — the only §6.4 context shape |
+| [coach/coachStore.ts](src/coach/coachStore.ts), [coach/CoachPanel.tsx](src/coach/CoachPanel.tsx) | Conversation/streaming store; Cmd+J chat panel + voice toggle |
+| [coach/__evals__/evalSet.ts](src/coach/__evals__/evalSet.ts) | 10-prompt manual eval set (PLAN §7) |
 
 ## State and data flow
 
-Four Zustand stores plus TanStack Query for plant search:
+Five Zustand stores plus TanStack Query for plant search:
 
 - **`useProjectStore`** owns the project file lifecycle. State: `current`
   (project meta), `isDirty`, `isBusy`, `lastError`.
@@ -192,6 +198,12 @@ Four Zustand stores plus TanStack Query for plant search:
   plantings + cache-only details (no network, offline-safe);
   `addPlanting` resolves through the write-through cache then creates the
   planting; `PlantPicker` search is a debounced TanStack Query.
+
+- **`useCoachStore`** owns the chat: one conversation per project,
+  display messages, streaming flag. `send` persists the user turn,
+  builds §6.4 context via `assembleCoachMessages`, streams the reply
+  through `adapter.chatStream`, updates the last message as deltas
+  arrive, then persists the assistant turn. Reset on project close.
 
 **Sketch cleanup flow.** `runCleanup()` assembles a §6.2 input from active
 strokes, resolves the model config, builds an `openaiCompatAdapter`, and
@@ -269,12 +281,14 @@ Concerns the current design handles correctly:
 - **Vitest** (frontend, `pnpm test`): stores + geometry round-trips, the
   §6.2 Zod contract, OpenAI-compat shaping/parsing, cleanup-apply
   mapping, Permapeople normalization/adapter, and the write-through
-  cache wrapper (hit/miss/offline). 48 tests passing.
+  cache wrapper (hit/miss/offline), the SSE delta parser + `chatStream`,
+  and §6.4 context ordering/voice/window. 53 tests passing.
 - **`cargo test`** (`src-tauri/`): migrations (incl. 0002
   `consumed_at`), zip/unzip + atomic save, per-shape CRUD, Phase 2
   end-to-end, stroke CRUD, atomic `apply_cleanup` (+ rollback), settings
   upsert, Keychain plumbing, plant-cache upsert, planting round-trip
-  (+ missing-bed guard). 20 tests passing.
+  (+ missing-bed guard), coach conversation/message + observation reads.
+  23 tests passing.
 - **Playwright** is installed but no e2e is written yet. Phase 1
   acceptance criterion ("new → draw a bed → save → reopen → bed is
   there") is currently satisfied by the cargo end-to-end test, not by a
@@ -287,17 +301,17 @@ Concerns the current design handles correctly:
   Rust binary in debug mode, full HMR for frontend.
 - **Production:** `pnpm tauri build` — Vite produces `dist/`, Tauri bundles
   it into `target/release/bundle/macos/GardenAngel.app`. Frontend bundle is
-  ~657 kB minified (Konva dominates; Zod + AI ~75 kB, TanStack Query
-  ~40 kB). Over the 600 kB soft line in AGENTS.md — acceptable for v0.1;
-  code-splitting the AI/cleanup + plants paths is the obvious lever if it
+  ~664 kB minified (Konva dominates; Zod + AI, TanStack Query, coach).
+  Over the 600 kB soft line in AGENTS.md — acceptable for v0.1;
+  code-splitting the AI/plants/coach paths is the obvious lever if it
   needs trimming.
 
 ## What's deliberately not here yet
 
-Phases 5–8 from [docs/PLAN.md](docs/PLAN.md) introduce:
+Phases 6–8 from [docs/PLAN.md](docs/PLAN.md) introduce:
 
-- On-demand coach chat panel (Phase 5).
-- Journal entries with photos baked into the project zip (Phase 6).
+- Journal entries with photos baked into the project zip (Phase 6) —
+  the observation *write* path (read path already feeds coach context).
 - PDF export (Phase 7).
 - macOS menu bar, icons, About window, polish (Phase 8).
 

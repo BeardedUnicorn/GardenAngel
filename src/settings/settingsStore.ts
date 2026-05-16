@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import type { ModelConfig } from "../ai/types";
 import type { PermapeopleConfig } from "../plants/permapeopleAdapter";
+import type { CoachVoice } from "../coach/prompts/systemPrompts";
 import {
   SECRET_API_KEY,
   SECRET_PP_KEY_ID,
   SECRET_PP_KEY_SECRET,
   SETTING_BASE_URL,
+  SETTING_COACH_VOICE,
   SETTING_MODEL,
   settingsApi,
 } from "./settingsApi";
@@ -16,6 +18,7 @@ const DEFAULT_MODEL = "gpt-4o-mini";
 interface SettingsState {
   baseUrl: string;
   model: string;
+  coachVoice: CoachVoice;
   hasApiKey: boolean;
   hasPermapeople: boolean;
   isOpen: boolean;
@@ -30,6 +33,7 @@ interface SettingsState {
   clearApiKey: () => Promise<void>;
   setPermapeopleKeys: (keyId: string, keySecret: string) => Promise<void>;
   clearPermapeopleKeys: () => Promise<void>;
+  setCoachVoice: (voice: CoachVoice) => Promise<void>;
   /** Transiently fetch the full config (incl. key) for an API call. */
   resolveConfig: () => Promise<ModelConfig>;
   resolvePermapeople: () => Promise<PermapeopleConfig>;
@@ -45,6 +49,7 @@ function errToString(err: unknown): string {
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   baseUrl: DEFAULT_BASE_URL,
   model: DEFAULT_MODEL,
+  coachVoice: "mystical",
   hasApiKey: false,
   hasPermapeople: false,
   isOpen: false,
@@ -65,6 +70,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({
         baseUrl: all[SETTING_BASE_URL] || DEFAULT_BASE_URL,
         model: all[SETTING_MODEL] || DEFAULT_MODEL,
+        coachVoice: all[SETTING_COACH_VOICE] === "plain" ? "plain" : "mystical",
         hasApiKey,
         hasPermapeople,
       });
@@ -133,6 +139,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ lastError: errToString(err) });
     } finally {
       set({ isBusy: false });
+    }
+  },
+
+  async setCoachVoice(voice) {
+    try {
+      await settingsApi.set(SETTING_COACH_VOICE, voice);
+      set({ coachVoice: voice });
+    } catch (err) {
+      set({ lastError: errToString(err) });
     }
   },
 

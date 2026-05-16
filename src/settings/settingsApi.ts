@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 // lives in the OS Keychain (ADR-001). Keep these key names stable.
 export const SETTING_BASE_URL = "ai_base_url";
 export const SETTING_MODEL = "ai_model";
+export const SETTING_COACH_VOICE = "coach_voice";
 export const SECRET_API_KEY = "coach-api-key";
 export const SECRET_PP_KEY_ID = "permapeople-key-id";
 export const SECRET_PP_KEY_SECRET = "permapeople-key-secret";

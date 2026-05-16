@@ -596,3 +596,117 @@ button.danger:hover:not(:disabled) {
     color: #9c9a92;
   }
 }
+
+/* ---- Phase 5: coach panel ---- */
+
+.coach-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 380px;
+  max-width: 92vw;
+  background-color: #fafaf9;
+  border-left: 1px solid #d3d3cf;
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  z-index: 18;
+}
+
+.coach-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid #e2e2e0;
+}
+
+.coach-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  flex: 1;
+}
+
+.coach-head .mode-toggle button {
+  font-size: 0.78rem;
+  padding: 0.25em 0.55em;
+}
+
+.coach-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.8rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.coach-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.coach-role {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6a6a64;
+}
+
+.coach-msg p {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  padding: 0.5em 0.7em;
+  border-radius: 8px;
+  background-color: #f0eee9;
+}
+
+.coach-user p {
+  background-color: #1a73e8;
+  color: white;
+  align-self: flex-end;
+}
+
+.coach-input {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.7rem 0.9rem;
+  border-top: 1px solid #e2e2e0;
+}
+
+.coach-input textarea {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.45em 0.6em;
+  border: 1px solid #d3d3cf;
+  border-radius: 6px;
+  resize: none;
+  background-color: #ffffff;
+  color: #1c1c1a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .coach-panel {
+    background-color: #232321;
+    border-left-color: #34342f;
+  }
+  .coach-head,
+  .coach-input {
+    border-color: #34342f;
+  }
+  .coach-msg p {
+    background-color: #2a2a27;
+  }
+  .coach-user p {
+    background-color: #1a73e8;
+  }
+  .coach-input textarea {
+    background-color: #2a2a27;
+    border-color: #3d3d37;
+    color: #ecebe6;
+  }
+}

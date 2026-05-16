@@ -11,11 +11,12 @@ plantings from open plant databases, log a living journal with photos, and
 chat with a mystically-voiced permaculture coach. Everything persists to a
 single `.gardenangel` project file (zip of SQLite + assets).
 
-**Current state:** Phases 0–4 are done — scaffold, project-file
+**Current state:** Phases 0–5 are done — scaffold, project-file
 persistence, the Konva canvas with drawing tools, Sketch mode with
-OpenAI-compatible AI cleanup + Plan-mode vertex editing, and Permapeople
-plantings with offline-cached companion guidance. Phases 5–8 (coach,
-journal, PDF export, polish) are not yet built.
+OpenAI-compatible AI cleanup + Plan-mode vertex editing, Permapeople
+plantings with offline-cached companion guidance, and the on-demand
+mystically-voiced coach (Cmd+J, §6.4 context). Phases 6–8 (journal,
+PDF export, polish) are not yet built.
 
 ## Required reading, in order
 

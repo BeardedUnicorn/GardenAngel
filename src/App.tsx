@@ -9,6 +9,8 @@ import { useCanvasStore } from "./canvas/canvasStore";
 import { useProjectStore } from "./project/projectStore";
 import { useSettingsStore } from "./settings/settingsStore";
 import { SettingsPanel } from "./settings/SettingsPanel";
+import { CoachPanel } from "./coach/CoachPanel";
+import { useCoachStore } from "./coach/coachStore";
 import "./App.css";
 
 const FILE_FILTER = [{ name: "GardenAngel Project", extensions: ["gardenangel"] }];
@@ -25,6 +27,8 @@ export default function App() {
   const setMode = useCanvasStore((s) => s.setMode);
   const loadSettings = useSettingsStore((s) => s.load);
   const openSettings = useSettingsStore((s) => s.open);
+  const toggleCoach = useCoachStore((s) => s.toggle);
+  const resetCoach = useCoachStore((s) => s.reset);
 
   useEffect(() => {
     void refresh();
@@ -36,8 +40,9 @@ export default function App() {
       void loadSettings();
     } else {
       resetCanvas();
+      resetCoach();
     }
-  }, [current, hydrate, resetCanvas, loadSettings]);
+  }, [current, hydrate, resetCanvas, loadSettings, resetCoach]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -46,10 +51,14 @@ export default function App() {
         e.preventDefault();
         void undo();
       }
+      if (meta && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        toggleCoach();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo]);
+  }, [undo, toggleCoach]);
 
   const errorMessage = lastError ?? canvasError;
   const dismissError = lastError ? clearError : clearCanvasError;
@@ -87,6 +96,11 @@ export default function App() {
           <button disabled={!canUndo} onClick={() => void undo()}>
             Undo
           </button>
+          {current && (
+            <button onClick={toggleCoach} title="Coach (Cmd+J)">
+              Coach
+            </button>
+          )}
           {current && <button onClick={openSettings}>Settings</button>}
           {current && (
             <button disabled={isBusy} onClick={onClose}>
@@ -110,6 +124,7 @@ export default function App() {
 
       <StrokeLabelDialog />
       <CleanupPreview />
+      {current && <CoachPanel />}
       <SettingsPanel />
 
       {errorMessage && (
