@@ -59,6 +59,18 @@ impl ProjectState {
         let conn = project.open_conn()?;
         f(&conn)
     }
+
+    /// Run with both the DB connection and the working-dir root. Used by
+    /// the journal to copy/read photos that live inside the project zip.
+    pub fn with_db_and_dir<R>(
+        &self,
+        f: impl FnOnce(&Connection, &Path) -> Result<R>,
+    ) -> Result<R> {
+        let slot = self.0.lock().map_err(|e| SerializableError::Other(e.to_string()))?;
+        let project = slot.as_ref().ok_or(SerializableError::NoProjectOpen)?;
+        let conn = project.open_conn()?;
+        f(&conn, project.working_dir.path())
+    }
 }
 
 #[tauri::command]

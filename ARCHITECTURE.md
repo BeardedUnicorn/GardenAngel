@@ -15,8 +15,9 @@ file I/O and persistence. **Phases 3–5 are in:** a Sketch mode (freehand
 vector strokes) feeds an OpenAI-compatible AI cleanup pass into editable
 shapes (Plan-mode vertex editing); beds carry plantings sourced from
 Permapeople with offline-cached companion guidance; and an on-demand,
-mystically-voiced coach (Cmd+J) chats with §6.4 context assembly. The
-journal/PDF/polish phases are still not present in code.
+mystically-voiced coach (Cmd+J) chats with §6.4 context assembly; and a living journal
+records text+photo observations baked into the project zip. PDF export
+and polish are still not present in code.
 
 ## Tech stack at a glance
 
@@ -113,7 +114,7 @@ phases — this avoids schema churn as features land. Tables:
 - `structures` — sheds, fences, water, compost, trees, other; has Phase 2 CRUD
 - `plantings` — bed↔plant pairings; has Phase 4 create/list/delete (status defaults `planned`)
 - `plant_cache` — write-through cache of plant lookups; has Phase 4 get/put (upsert on `external_id`)
-- `observations` — journal entries; Phase 5 read paths (recent / per-bed) feed coach context; write path is Phase 6
+- `observations` — journal entries; Phase 6 create/list/delete + photo bytes; reads also feed coach context (Phase 5)
 - `coach_conversations`, `coach_messages` — coach chat history; has Phase 5 ensure/list/add (one conversation per project)
 - `settings` — key/value config (AI base URL, model); has Phase 3 get/set/all
 
@@ -138,11 +139,14 @@ requirements).
 | [settings.rs](src-tauri/src/settings.rs) | `settings_get_all`, `setting_get/set` over the `settings` table |
 | [plants.rs](src-tauri/src/plants.rs) | `plant_cache_get/put` (write-through store), `plantings_list/create/delete` (guards bed exists) |
 | [coach.rs](src-tauri/src/coach.rs) | `coach_conversation_ensure`, `coach_messages_list/add` (role-guarded), `observations_recent/for_bed` |
+| [journal.rs](src-tauri/src/journal.rs) | `observation_create` (copies photo into the zip), `observations_list/delete`, `observation_photo_read` (bytes, traversal-guarded) |
 
 Pattern: every command takes `State<'_, ProjectState>`, calls
 `state.with_db(|conn| …)` to acquire a `rusqlite::Connection` against the
-open project's working-dir SQLite. Errors return `Result<T, SerializableError>`
-which serializes to a plain string for the frontend.
+open project's working-dir SQLite (or `with_db_and_dir` when it also
+needs the working-dir root, e.g. journal photos). Errors return
+`Result<T, SerializableError>` which serializes to a plain string for
+the frontend.
 
 ### Frontend (`src/`)
 
@@ -172,10 +176,11 @@ which serializes to a plain string for the frontend.
 | [coach/CoachService.ts](src/coach/CoachService.ts) | Pure `assembleCoachMessages` — the only §6.4 context shape |
 | [coach/coachStore.ts](src/coach/coachStore.ts), [coach/CoachPanel.tsx](src/coach/CoachPanel.tsx) | Conversation/streaming store; Cmd+J chat panel + voice toggle |
 | [coach/__evals__/evalSet.ts](src/coach/__evals__/evalSet.ts) | 10-prompt manual eval set (PLAN §7) |
+| [journal/journalStore.ts](src/journal/journalStore.ts), [journal/JournalPanel.tsx](src/journal/JournalPanel.tsx) | Observation store; add (text+photo via dialog), list, delete, blob-URL photo render |
 
 ## State and data flow
 
-Five Zustand stores plus TanStack Query for plant search:
+Six Zustand stores plus TanStack Query for plant search:
 
 - **`useProjectStore`** owns the project file lifecycle. State: `current`
   (project meta), `isDirty`, `isBusy`, `lastError`.
@@ -204,6 +209,11 @@ Five Zustand stores plus TanStack Query for plant search:
   builds §6.4 context via `assembleCoachMessages`, streams the reply
   through `adapter.chatStream`, updates the last message as deltas
   arrive, then persists the assistant turn. Reset on project close.
+
+- **`useJournalStore`** owns observations: load/add/delete. Photos are
+  picked via the Tauri dialog (a path), copied into the zip by Rust, and
+  rendered back from `observation_photo_read` bytes as blob URLs. Reset
+  on project close.
 
 **Sketch cleanup flow.** `runCleanup()` assembles a §6.2 input from active
 strokes, resolves the model config, builds an `openaiCompatAdapter`, and
@@ -286,9 +296,9 @@ Concerns the current design handles correctly:
 - **`cargo test`** (`src-tauri/`): migrations (incl. 0002
   `consumed_at`), zip/unzip + atomic save, per-shape CRUD, Phase 2
   end-to-end, stroke CRUD, atomic `apply_cleanup` (+ rollback), settings
-  upsert, Keychain plumbing, plant-cache upsert, planting round-trip
-  (+ missing-bed guard), coach conversation/message + observation reads.
-  23 tests passing.
+  upsert, Keychain plumbing, plant-cache upsert, planting round-trip,
+  coach conversation/message + observation reads, journal photo copy +
+  path-traversal guard. 26 tests passing.
 - **Playwright** is installed but no e2e is written yet. Phase 1
   acceptance criterion ("new → draw a bed → save → reopen → bed is
   there") is currently satisfied by the cargo end-to-end test, not by a
@@ -308,10 +318,8 @@ Concerns the current design handles correctly:
 
 ## What's deliberately not here yet
 
-Phases 6–8 from [docs/PLAN.md](docs/PLAN.md) introduce:
+Phases 7–8 from [docs/PLAN.md](docs/PLAN.md) introduce:
 
-- Journal entries with photos baked into the project zip (Phase 6) —
-  the observation *write* path (read path already feeds coach context).
 - PDF export (Phase 7).
 - macOS menu bar, icons, About window, polish (Phase 8).
 

@@ -11,6 +11,8 @@ import { useSettingsStore } from "./settings/settingsStore";
 import { SettingsPanel } from "./settings/SettingsPanel";
 import { CoachPanel } from "./coach/CoachPanel";
 import { useCoachStore } from "./coach/coachStore";
+import { JournalPanel } from "./journal/JournalPanel";
+import { useJournalStore } from "./journal/journalStore";
 import "./App.css";
 
 const FILE_FILTER = [{ name: "GardenAngel Project", extensions: ["gardenangel"] }];
@@ -29,6 +31,8 @@ export default function App() {
   const openSettings = useSettingsStore((s) => s.open);
   const toggleCoach = useCoachStore((s) => s.toggle);
   const resetCoach = useCoachStore((s) => s.reset);
+  const toggleJournal = useJournalStore((s) => s.toggle);
+  const resetJournal = useJournalStore((s) => s.reset);
 
   useEffect(() => {
     void refresh();
@@ -41,8 +45,9 @@ export default function App() {
     } else {
       resetCanvas();
       resetCoach();
+      resetJournal();
     }
-  }, [current, hydrate, resetCanvas, loadSettings, resetCoach]);
+  }, [current, hydrate, resetCanvas, loadSettings, resetCoach, resetJournal]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -96,6 +101,7 @@ export default function App() {
           <button disabled={!canUndo} onClick={() => void undo()}>
             Undo
           </button>
+          {current && <button onClick={toggleJournal}>Journal</button>}
           {current && (
             <button onClick={toggleCoach} title="Coach (Cmd+J)">
               Coach
@@ -125,6 +131,7 @@ export default function App() {
       <StrokeLabelDialog />
       <CleanupPreview />
       {current && <CoachPanel />}
+      {current && <JournalPanel />}
       <SettingsPanel />
 
       {errorMessage && (

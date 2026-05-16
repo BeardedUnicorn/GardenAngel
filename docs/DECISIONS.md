@@ -397,3 +397,45 @@ an incremental `ReadableStream` to the renderer.
   write path is Phase 6 — the coach simply sees an empty list until then.
 - Eval discipline (PLAN §7): `src/coach/__evals__/evalSet.ts` holds the
   10-prompt manual set; results go in docs/PROMPTS.md by hand.
+
+---
+
+## ADR-011: Journal photos are copied into the zip and served as bytes over IPC
+
+**Date:** 2026-05-16
+**Status:** Accepted
+
+### Context
+PLAN Phase 6 requires observation photos to live *inside* the
+`.gardenangel` file, "not as external references," and to render after
+save/reopen. The renderer can't read the private temp working dir via
+`file://`, and the working-dir path is intentionally not exposed
+(ADR-002).
+
+### Decision
+- `observation_create` takes the OS path the user picked in the Tauri
+  dialog and **copies the bytes** into
+  `working_dir/assets/photos/<uuid>.<ext>` (ext whitelisted to common
+  image types, else `jpg`). The DB stores only the relative path. The
+  existing whole-working-dir zip on save carries it along; unzip on open
+  restores it.
+- `observation_photo_read` returns the file bytes (`Vec<u8>`) for a
+  given relative path; the frontend wraps them in a `Blob` +
+  object URL. `safe_relative` rejects anything not under `assets/`,
+  absolute, or containing `..` (path-traversal guard).
+- A new `ProjectState::with_db_and_dir` helper hands commands both the
+  connection and the working-dir root without leaking the path to JS.
+
+### Rationale
+- Copy-in is the only way to honor "inside the zip, not a reference"
+  and survive the source file moving/deleting.
+- Bytes-over-IPC keeps the working-dir path private and sidesteps Tauri
+  asset-protocol scope configuration for a per-project temp dir.
+
+### Consequences
+- Large photo libraries inflate the zip and memory (bytes round-trip
+  through IPC). Fine for v0.1's expected handful of photos; revisit with
+  the asset protocol or thumbnails if it becomes a problem.
+- `observations` now has a write path; the read path already fed coach
+  context since Phase 5 (ADR-010), so the coach sees journal notes with
+  no further work.
