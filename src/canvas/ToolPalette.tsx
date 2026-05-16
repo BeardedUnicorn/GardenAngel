@@ -15,6 +15,7 @@ const TOOLS: ToolDef[] = [
   { id: "polygon-bed", label: "Polygon bed", shortcut: "P", hint: "Click vertices, Enter to close" },
   { id: "path", label: "Path", shortcut: "T", hint: "Click vertices, Enter to finish" },
   { id: "structure", label: "Structure", shortcut: "S", hint: "Drag a rectangle (shed)" },
+  { id: "tree", label: "Tree", shortcut: "O", hint: "Drag canopy from center outward" },
 ];
 
 export function ToolPalette() {

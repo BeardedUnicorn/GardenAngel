@@ -279,6 +279,21 @@ describe("canvasStore", () => {
       expect(created?.geometry).toEqual(geom);
     });
 
+    it("creates a tree as a structure with kind='tree' and circle geometry", async () => {
+      const geom = { cx: 400, cy: 200, radius: 30 };
+      const tree = makeStructure({ kind: "tree", geometry: geom, name: null });
+      mockedInvoke.mockResolvedValueOnce(tree);
+      const created = await useCanvasStore.getState().createStructure({
+        name: null,
+        kind: "tree",
+        geometry: geom,
+        notes: null,
+      });
+      expect(created?.kind).toBe("tree");
+      expect(created?.geometry).toEqual(geom);
+      expect(useCanvasStore.getState().structures).toEqual([tree]);
+    });
+
     it("preserves path point array", async () => {
       const points: [number, number][] = [
         [0, 0],

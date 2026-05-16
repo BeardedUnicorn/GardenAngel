@@ -92,7 +92,8 @@ export type Tool =
   | "circle-bed"
   | "polygon-bed"
   | "path"
-  | "structure";
+  | "structure"
+  | "tree";
 
 export type ShapeKind = "bed" | "path" | "structure";
 

@@ -177,7 +177,8 @@ button.danger:hover:not(:disabled) {
 
 .canvas-container.tool-rect-bed,
 .canvas-container.tool-circle-bed,
-.canvas-container.tool-structure {
+.canvas-container.tool-structure,
+.canvas-container.tool-tree {
   cursor: crosshair;
 }
 

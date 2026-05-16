@@ -23,7 +23,7 @@ const POLYGON_CLOSE_RADIUS = 8;
 type DrawingState =
   | { kind: "idle" }
   | { kind: "rect"; start: [number, number]; end: [number, number]; for: "bed" | "structure" }
-  | { kind: "circle"; center: [number, number]; cursor: [number, number] }
+  | { kind: "circle"; center: [number, number]; cursor: [number, number]; for: "bed" | "tree" }
   | { kind: "polygon"; points: [number, number][]; cursor: [number, number] | null }
   | { kind: "path"; points: [number, number][]; cursor: [number, number] | null };
 
@@ -127,6 +127,7 @@ export function CanvasStage() {
         p: "polygon-bed",
         t: "path",
         s: "structure",
+        o: "tree",
       };
       const next = map[e.key.toLowerCase()];
       if (next && !e.metaKey && !e.ctrlKey) setTool(next);
@@ -182,13 +183,23 @@ export function CanvasStage() {
         setDrawing({ kind: "idle" });
         return;
       }
-      void createBed({
-        name: null,
-        shape_type: "circle",
-        geometry: { cx: drawing.center[0], cy: drawing.center[1], radius },
-        soil_notes: null,
-        sun_exposure: null,
-      });
+      const geom = { cx: drawing.center[0], cy: drawing.center[1], radius };
+      if (drawing.for === "tree") {
+        void createStructure({
+          name: null,
+          kind: "tree",
+          geometry: geom,
+          notes: null,
+        });
+      } else {
+        void createBed({
+          name: null,
+          shape_type: "circle",
+          geometry: geom,
+          soil_notes: null,
+          sun_exposure: null,
+        });
+      }
       setDrawing({ kind: "idle" });
       return;
     }
@@ -267,9 +278,14 @@ export function CanvasStage() {
       return;
     }
 
-    if (tool === "circle-bed") {
+    if (tool === "circle-bed" || tool === "tree") {
       if (!onStage) return;
-      setDrawing({ kind: "circle", center: pt, cursor: pt });
+      setDrawing({
+        kind: "circle",
+        center: pt,
+        cursor: pt,
+        for: tool === "tree" ? "tree" : "bed",
+      });
       return;
     }
 
