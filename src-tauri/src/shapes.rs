@@ -4,7 +4,10 @@ use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-const GARDEN_ID: i64 = 1;
+/// v0.1 supports one garden per file, always id=1. Shared so sibling
+/// modules (sketch cleanup) scope to the same garden instead of
+/// re-declaring the literal.
+pub const GARDEN_ID: i64 = 1;
 
 // =========================================================================
 // Common helpers
@@ -143,6 +146,7 @@ pub struct PathShape {
     pub points: Vec<[f64; 2]>,
     pub width: f64,
     pub material: Option<String>,
+    pub color: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -153,6 +157,7 @@ pub struct PathInput {
     pub points: Vec<[f64; 2]>,
     pub width: f64,
     pub material: Option<String>,
+    pub color: Option<String>,
 }
 
 fn row_to_path(row: &Row) -> rusqlite::Result<PathShape> {
@@ -165,6 +170,7 @@ fn row_to_path(row: &Row) -> rusqlite::Result<PathShape> {
         points,
         width: row.get("width")?,
         material: row.get("material")?,
+        color: row.get("color")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -172,7 +178,8 @@ fn row_to_path(row: &Row) -> rusqlite::Result<PathShape> {
 
 pub fn list_paths(conn: &Connection) -> Result<Vec<PathShape>> {
     let mut stmt = conn.prepare(
-        "SELECT id, garden_id, name, points_json, width, material, created_at, updated_at
+        "SELECT id, garden_id, name, points_json, width, material, color,
+                created_at, updated_at
          FROM paths WHERE garden_id = ?1 ORDER BY id",
     )?;
     let rows = stmt.query_map(params![GARDEN_ID], row_to_path)?;
@@ -183,14 +190,16 @@ pub fn insert_path(conn: &Connection, input: &PathInput) -> Result<PathShape> {
     let now = now_iso();
     let points_json = serde_json::to_string(&input.points)?;
     conn.execute(
-        "INSERT INTO paths (garden_id, name, points_json, width, material, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        "INSERT INTO paths
+            (garden_id, name, points_json, width, material, color, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
         params![
             GARDEN_ID,
             input.name,
             points_json,
             input.width,
             input.material,
+            input.color,
             now
         ],
     )?;
@@ -202,9 +211,19 @@ pub fn update_path(conn: &Connection, id: i64, input: &PathInput) -> Result<Path
     let now = now_iso();
     let points_json = serde_json::to_string(&input.points)?;
     let rows = conn.execute(
-        "UPDATE paths SET name = ?2, points_json = ?3, width = ?4, material = ?5, updated_at = ?6
+        "UPDATE paths
+         SET name = ?2, points_json = ?3, width = ?4, material = ?5, color = ?6,
+             updated_at = ?7
          WHERE id = ?1",
-        params![id, input.name, points_json, input.width, input.material, now],
+        params![
+            id,
+            input.name,
+            points_json,
+            input.width,
+            input.material,
+            input.color,
+            now
+        ],
     )?;
     if rows == 0 {
         return Err(SerializableError::Other(format!("path {id} not found")));
@@ -222,7 +241,8 @@ pub fn delete_path(conn: &Connection, id: i64) -> Result<()> {
 
 fn get_path(conn: &Connection, id: i64) -> Result<PathShape> {
     let path = conn.query_row(
-        "SELECT id, garden_id, name, points_json, width, material, created_at, updated_at
+        "SELECT id, garden_id, name, points_json, width, material, color,
+                created_at, updated_at
          FROM paths WHERE id = ?1",
         params![id],
         row_to_path,
@@ -483,15 +503,18 @@ mod tests {
                 points: vec![[0.0, 0.0], [10.0, 10.0], [20.0, 5.0]],
                 width: 24.0,
                 material: Some("mulch".into()),
+                color: Some("#a78b6e".into()),
             },
         )
         .unwrap();
         assert_eq!(path.points.len(), 3);
         assert_eq!(path.points[2], [20.0, 5.0]);
         assert_eq!(path.width, 24.0);
+        assert_eq!(path.color.as_deref(), Some("#a78b6e"));
 
         let listed = list_paths(&conn).unwrap();
         assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].color.as_deref(), Some("#a78b6e"));
     }
 
     #[test]

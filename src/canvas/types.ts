@@ -47,6 +47,7 @@ export interface PathShape {
   points: [number, number][];
   width: number;
   material: string | null;
+  color: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -56,9 +57,24 @@ export interface PathInput {
   points: [number, number][];
   width: number;
   material: string | null;
+  color: string | null;
 }
 
-export type StructureKind = "shed" | "fence" | "water" | "compost" | "tree" | "other";
+/** Default path stroke when no color is set (matches PathShapeView). */
+export const DEFAULT_PATH_COLOR = "#a78b6e";
+
+export type StructureKind =
+  | "shed"
+  | "fence"
+  | "trellis"
+  | "water"
+  | "compost"
+  | "tree"
+  | "other";
+
+/** Structure kinds drawn as an open polyline rather than a filled area. */
+export const LINE_STRUCTURE_KINDS = ["fence", "trellis"] as const;
+export type LineStructureKind = (typeof LINE_STRUCTURE_KINDS)[number];
 
 export type StructureGeometry = RectGeometry | PolygonGeometry | CircleGeometry;
 
@@ -88,12 +104,37 @@ export interface ShapesSnapshot {
 
 export type Tool =
   | "select"
+  | "freehand"
   | "rect-bed"
   | "circle-bed"
   | "polygon-bed"
   | "path"
   | "structure"
-  | "tree";
+  | "tree"
+  | "fence"
+  | "trellis";
+
+export type CanvasMode = "sketch" | "plan";
+
+export interface SketchStroke {
+  id: number;
+  garden_id: number;
+  label: string | null;
+  points: [number, number][];
+  color: string | null;
+  width: number | null;
+  closed: boolean;
+  created_at: string;
+  consumed_at: string | null;
+}
+
+export interface StrokeInput {
+  label: string | null;
+  points: [number, number][];
+  color: string | null;
+  width: number | null;
+  closed: boolean;
+}
 
 export type ShapeKind = "bed" | "path" | "structure";
 

@@ -1,10 +1,20 @@
 import { useCanvasStore } from "./canvasStore";
-import type { Bed, PathShape, Structure, StructureKind, SunExposure } from "./types";
+import { PlantingsSection } from "../plants/PlantingsSection";
+import { DEFAULT_PATH_COLOR } from "./types";
+import type {
+  Bed,
+  PathInput,
+  PathShape,
+  Structure,
+  StructureKind,
+  SunExposure,
+} from "./types";
 
 const SUN_OPTIONS: SunExposure[] = ["full", "partial", "shade"];
 const STRUCTURE_KINDS: StructureKind[] = [
   "shed",
   "fence",
+  "trellis",
   "water",
   "compost",
   "tree",
@@ -114,6 +124,7 @@ function BedEditor({ bed }: { bed: Bed }) {
       <button className="danger" onClick={() => void deleteBed(bed.id)}>
         Delete bed
       </button>
+      <PlantingsSection bedId={bed.id} />
     </aside>
   );
 }
@@ -122,6 +133,18 @@ function PathEditor({ path }: { path: PathShape }) {
   const updatePath = useCanvasStore((s) => s.updatePath);
   const deletePath = useCanvasStore((s) => s.deletePath);
 
+  // Single source of truth for the full PathInput so each field only
+  // overrides what it changes (and color survives other edits).
+  const save = (patch: Partial<PathInput>) =>
+    void updatePath(path.id, {
+      name: path.name,
+      points: path.points,
+      width: path.width,
+      material: path.material,
+      color: path.color,
+      ...patch,
+    });
+
   return (
     <aside className="property-panel">
       <h2>Path</h2>
@@ -129,14 +152,7 @@ function PathEditor({ path }: { path: PathShape }) {
         Name
         <input
           value={path.name ?? ""}
-          onChange={(e) =>
-            void updatePath(path.id, {
-              name: e.currentTarget.value || null,
-              points: path.points,
-              width: path.width,
-              material: path.material,
-            })
-          }
+          onChange={(e) => save({ name: e.currentTarget.value || null })}
         />
       </label>
       <label>
@@ -148,27 +164,33 @@ function PathEditor({ path }: { path: PathShape }) {
           step={2}
           value={path.width}
           onChange={(e) =>
-            void updatePath(path.id, {
-              name: path.name,
-              points: path.points,
-              width: Number(e.currentTarget.value) || path.width,
-              material: path.material,
-            })
+            save({ width: Number(e.currentTarget.value) || path.width })
           }
         />
+      </label>
+      <label>
+        Color
+        <span className="color-row">
+          <input
+            type="color"
+            value={path.color || DEFAULT_PATH_COLOR}
+            onChange={(e) => save({ color: e.currentTarget.value })}
+          />
+          <button
+            type="button"
+            disabled={!path.color}
+            onClick={() => save({ color: null })}
+            title="Use the default path color"
+          >
+            Reset
+          </button>
+        </span>
       </label>
       <label>
         Material
         <input
           value={path.material ?? ""}
-          onChange={(e) =>
-            void updatePath(path.id, {
-              name: path.name,
-              points: path.points,
-              width: path.width,
-              material: e.currentTarget.value || null,
-            })
-          }
+          onChange={(e) => save({ material: e.currentTarget.value || null })}
         />
       </label>
       <p className="dim small">

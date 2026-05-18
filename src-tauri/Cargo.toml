@@ -27,6 +27,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3"
+# OS keychain for the coach API key (ADR-001: keyring over stronghold).
+# macOS-only v0.1 -> apple-native backend; mock backend used in tests.
+keyring = { version = "3", features = ["apple-native"] }
 
 [dev-dependencies]
 tempfile = "3"
